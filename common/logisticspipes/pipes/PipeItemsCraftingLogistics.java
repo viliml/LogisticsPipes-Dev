@@ -198,7 +198,9 @@ public class PipeItemsCraftingLogistics extends CoreRoutedPipe implements ICraft
 		if(!whatWeWant) {
 			LogisticsPipes.requestLog.info("crafting extract got a unrequested item type from " + ((TileEntity)inv).toString());
 		}
-		while(count>0){
+		while(count > 0){
+			if(retCount>count)
+				retCount = count; // if the number we could request is more than we need, just request what we do need.
 			// do it for real this time
 			ItemStack[] stacks2 = inv.extractItem(true, ForgeDirection.UNKNOWN, retCount);		
 			if(stacks2.length != stacks.length) {
