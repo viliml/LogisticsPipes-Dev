@@ -184,7 +184,7 @@ public class PipeItemsCraftingLogistics extends CoreRoutedPipe implements ICraft
 		while(count > 0) {
 			ItemStack[] stacks = inv.extractItem(false, ForgeDirection.UNKNOWN, count);
 			if(stacks == null || stacks.length < 1 || stacks[0] == null || stacks[0].stackSize == 1) 
-				return extractFromISpecialInventory(inv, wanteditem,count) ;
+				return slowExtractFromISpecialInventory(inv, wanteditem,count) ;
 			
 			for(ItemStack stack: stacks) {
 				if(stack.stackSize == 0) break;
