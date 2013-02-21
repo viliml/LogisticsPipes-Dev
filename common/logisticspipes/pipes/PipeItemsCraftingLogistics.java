@@ -180,36 +180,53 @@ public class PipeItemsCraftingLogistics extends CoreRoutedPipe implements ICraft
 	}
 
 	private ItemStack extractFromISpecialInventory(ISpecialInventory inv, ItemIdentifier wanteditem, int count){
-		ItemStack retstack = null;
-		while(count > 0) {
-			ItemStack[] stacks = inv.extractItem(false, ForgeDirection.UNKNOWN, count);
-			if(stacks == null || stacks.length < 1 || stacks[0] == null || stacks[0].stackSize == 1) 
-				return slowExtractFromISpecialInventory(inv, wanteditem,count) ;
-			
-			for(ItemStack stack: stacks) {
-				if(stack.stackSize == 0) break;
-				if(retstack == null) {
-					if(!wanteditem.fuzzyMatch(stack)) break;
-				} else {
+		ItemStack[] stacks = inv.extractItem(false, ForgeDirection.UNKNOWN, count);
+		if(stacks == null || stacks.length < 1 || stacks[0] == null || stacks[0].stackSize == 1) 
+			return slowExtractFromISpecialInventory(inv, wanteditem,count) ;
+		if(!wanteditem.fuzzyMatch(stacks[0])) return null;
+		ItemStack retstack=stacks[0];
+		boolean whatWeWant = true;
+		int retCount=0;
+		for(ItemStack stack: stacks) {
+			if(stack == null || stack.stackSize == 0) continue;
+			if(retstack != null) {
+				if(!retstack.isItemEqual(stack)) {whatWeWant = false; break;}
+				if(!ItemStack.areItemStackTagsEqual(retstack, stack)){whatWeWant = false; break;}
+			}
+			retCount += stack.stackSize;
+		}
+		if(!whatWeWant) {
+			LogisticsPipes.requestLog.info("crafting extract got a unrequested item type from " + ((TileEntity)inv).toString());
+		}
+		while(count>0){
+			// do it for real this time
+			ItemStack[] stacks2 = inv.extractItem(true, ForgeDirection.UNKNOWN, retCount);		
+			if(stacks2.length != stacks.length) {
+				LogisticsPipes.requestLog.info(((TileEntity)inv).toString() + " does not implement ISpecial properly - extractItem(true,...) returned a different length array to extractItem(false)");
+			}
+			if(stacks2 == null || stacks2.length < 1 || stacks2[0] == null) {
+				LogisticsPipes.requestLog.info("crafting extractItem(true) got a blank result from " + ((TileEntity)inv).toString());
+				return retstack;
+			}
+			retstack=null;
+			for(int index=0;index < stacks2.length;index++) {
+				ItemStack stack = stacks2[index];
+				if(stack.stackSize == 0) continue;
+				if(retstack != null) {
 					if(!retstack.isItemEqual(stack)) break;
 					if(!ItemStack.areItemStackTagsEqual(retstack, stack)) break;
 				}
 				if(!useEnergy(neededEnergy() * stack.stackSize)) break;
 				
-				stacks = inv.extractItem(true, ForgeDirection.UNKNOWN, stack.stackSize);
-				if(stacks == null || stacks.length < 1 || stacks[0] == null) {
-					LogisticsPipes.requestLog.info("crafting extractItem(true) got nothing from " + ((TileEntity)inv).toString());
-					break;
-				}
 				if(!ItemStack.areItemStacksEqual(stack, stacks[0])) {
-					LogisticsPipes.requestLog.info("crafting extract got a unexpected item from " + ((TileEntity)inv).toString());
+					LogisticsPipes.requestLog.info("crafting extract got a unexpected item from " + ((TileEntity)inv).toString() +" this stack might be lost");					
 				}
 				if(retstack == null) {
 					retstack = stack;
 				} else {
-					retstack.stackSize += stacks[0].stackSize;
+					retstack.stackSize += stack.stackSize;
 				}
-				count -= stacks[0].stackSize;
+				count -= stack.stackSize;
 			}
 		}
 		return retstack;
