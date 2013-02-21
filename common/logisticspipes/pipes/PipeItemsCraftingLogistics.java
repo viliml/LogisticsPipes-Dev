@@ -146,7 +146,7 @@ public class PipeItemsCraftingLogistics extends CoreRoutedPipe implements ICraft
 		}
 	}
 
-	private ItemStack extractFromISpecialInventory(ISpecialInventory inv, ItemIdentifier wanteditem, int count){
+	private ItemStack slowExtractFromISpecialInventory(ISpecialInventory inv, ItemIdentifier wanteditem, int count){
 		ItemStack retstack = null;
 		while(count > 0) {
 			ItemStack[] stacks = inv.extractItem(false, ForgeDirection.UNKNOWN, 1);
@@ -175,6 +175,42 @@ public class PipeItemsCraftingLogistics extends CoreRoutedPipe implements ICraft
 				retstack.stackSize += stack.stackSize;
 			}
 			count -= stack.stackSize;
+		}
+		return retstack;
+	}
+
+	private ItemStack extractFromISpecialInventory(ISpecialInventory inv, ItemIdentifier wanteditem, int count){
+		ItemStack retstack = null;
+		while(count > 0) {
+			ItemStack[] stacks = inv.extractItem(false, ForgeDirection.UNKNOWN, count);
+			if(stacks == null || stacks.length < 1 || stacks[0] == null || stacks[0].stackSize == 1) 
+				return extractFromISpecialInventory(inv, wanteditem,count) ;
+			
+			for(ItemStack stack: stacks) {
+				if(stack.stackSize == 0) break;
+				if(retstack == null) {
+					if(!wanteditem.fuzzyMatch(stack)) break;
+				} else {
+					if(!retstack.isItemEqual(stack)) break;
+					if(!ItemStack.areItemStackTagsEqual(retstack, stack)) break;
+				}
+				if(!useEnergy(neededEnergy() * stack.stackSize)) break;
+				
+				stacks = inv.extractItem(true, ForgeDirection.UNKNOWN, stack.stackSize);
+				if(stacks == null || stacks.length < 1 || stacks[0] == null) {
+					LogisticsPipes.requestLog.info("crafting extractItem(true) got nothing from " + ((TileEntity)inv).toString());
+					break;
+				}
+				if(!ItemStack.areItemStacksEqual(stack, stacks[0])) {
+					LogisticsPipes.requestLog.info("crafting extract got a unexpected item from " + ((TileEntity)inv).toString());
+				}
+				if(retstack == null) {
+					retstack = stack;
+				} else {
+					retstack.stackSize += stacks[0].stackSize;
+				}
+				count -= stacks[0].stackSize;
+			}
 		}
 		return retstack;
 	}
