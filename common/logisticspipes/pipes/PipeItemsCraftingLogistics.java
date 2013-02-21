@@ -198,6 +198,7 @@ public class PipeItemsCraftingLogistics extends CoreRoutedPipe implements ICraft
 		if(!whatWeWant) {
 			LogisticsPipes.requestLog.info("crafting extract got a unrequested item type from " + ((TileEntity)inv).toString());
 		}
+		retstack=null;
 		while(count > 0){
 			if(retCount>count)
 				retCount = count; // if the number we could request is more than we need, just request what we do need.
@@ -210,7 +211,6 @@ public class PipeItemsCraftingLogistics extends CoreRoutedPipe implements ICraft
 				LogisticsPipes.requestLog.info("crafting extractItem(true) got a blank result from " + ((TileEntity)inv).toString());
 				return retstack;
 			}
-			retstack=null;
 			for(int index=0;index < stacks2.length;index++) {
 				ItemStack stack = stacks2[index];
 				if(stack.stackSize == 0) continue;
