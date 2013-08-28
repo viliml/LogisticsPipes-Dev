@@ -6,36 +6,15 @@
  * http://www.mod-buildcraft.com/MMPL-1.0.txt
  */
 
-/*
-TODO later, maybe....
- - Status screen (in transit, waiting for craft, ready etc)
- - RoutedEntityItem, targetTile - specify which "chest" it should be delivered to
- - RoutedEntityItem, travel time
- - Change recipes to chip-sets in 3.0.0.0
- - Add in-game item for network management (turn on/off link detection, poke link detection etc) ?
- - Context sensitive textures. Flashing routers on deliveries?
- - Track deliveries / en route ?
- - Save stuff, like destinations
- - Texture improvement
- - Route liquids (in container)?
- - Persistance:
- 	- Save logistics to file. Save coordinates so they can be resolved later. Also save items in transit and count them as not delivered
- - SMP:
-	- Peering, transport other peoples items. Need hook to set owner of PassiveEntity
-*/
-
 package logisticspipes;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import logisticspipes.blocks.LogisticsSignBlock;
 import logisticspipes.blocks.LogisticsSolidBlock;
-import logisticspipes.blocks.powertile.LogisticsPowerJuntionTileEntity_BuildCraft;
-import logisticspipes.blocks.powertile.LogisticsPowerJuntionTileEntity_IC2_BuildCraft;
 import logisticspipes.commands.LogisticsPipesCommand;
 import logisticspipes.config.Configs;
 import logisticspipes.items.CraftingSignCreator;
@@ -44,63 +23,68 @@ import logisticspipes.items.ItemHUDArmor;
 import logisticspipes.items.ItemModule;
 import logisticspipes.items.ItemParts;
 import logisticspipes.items.ItemUpgrade;
+import logisticspipes.items.LogisticsBrokenItem;
 import logisticspipes.items.LogisticsItem;
 import logisticspipes.items.LogisticsItemCard;
-import logisticspipes.items.LogisticsLiquidContainer;
+import logisticspipes.items.LogisticsFluidContainer;
+import logisticspipes.items.LogisticsNetworkManager;
 import logisticspipes.items.LogisticsSolidBlockItem;
 import logisticspipes.items.RemoteOrderer;
 import logisticspipes.log.RequestLogFormator;
-import logisticspipes.logic.BaseLogicSatellite;
-import logisticspipes.logistics.LogisticsLiquidManager;
+import logisticspipes.logistics.LogisticsFluidManager;
 import logisticspipes.logistics.LogisticsManagerV2;
 import logisticspipes.main.CreativeTabLP;
 import logisticspipes.main.LogisticsEventListener;
-import logisticspipes.main.LogisticsWorldManager;
 import logisticspipes.network.GuiHandler;
-import logisticspipes.network.NetworkConstants;
 import logisticspipes.network.PacketHandler;
-import logisticspipes.pipes.basic.LogisticsTileGenericPipe;
+import logisticspipes.pipes.PipeFluidSatellite;
+import logisticspipes.pipes.PipeItemsSatelliteLogistics;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.proxy.ProxyManager;
 import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.proxy.SpecialInventoryHandlerManager;
 import logisticspipes.proxy.buildcraft.BuildCraftProxy;
-import logisticspipes.proxy.cc.LogisticsPowerJuntionTileEntity_CC_BuildCraft;
-import logisticspipes.proxy.cc.LogisticsPowerJuntionTileEntity_CC_IC2_BuildCraft;
-import logisticspipes.proxy.cc.LogisticsTileGenericPipe_CC;
 import logisticspipes.proxy.recipeproviders.AssemblyAdvancedWorkbench;
+import logisticspipes.proxy.recipeproviders.AssemblyTable;
 import logisticspipes.proxy.recipeproviders.AutoWorkbench;
+import logisticspipes.proxy.recipeproviders.ImmibisCraftingTableMk2;
+import logisticspipes.proxy.recipeproviders.LogisticsCraftingTable;
 import logisticspipes.proxy.recipeproviders.RollingMachine;
 import logisticspipes.proxy.recipeproviders.SolderingStation;
 import logisticspipes.proxy.specialconnection.SpecialPipeConnection;
 import logisticspipes.proxy.specialconnection.SpecialTileConnection;
 import logisticspipes.proxy.specialconnection.TeleportPipes;
 import logisticspipes.proxy.specialconnection.TesseractConnection;
+import logisticspipes.proxy.specialtankhandler.BuildCraftTankHandler;
+import logisticspipes.proxy.specialtankhandler.SpecialTankHandler;
 import logisticspipes.recipes.RecipeManager;
 import logisticspipes.recipes.SolderingStationRecipes;
+import logisticspipes.renderer.FluidContainerRenderer;
 import logisticspipes.renderer.LogisticsHUDRenderer;
 import logisticspipes.routing.RouterManager;
 import logisticspipes.routing.ServerRouter;
 import logisticspipes.textures.Textures;
 import logisticspipes.ticks.ClientPacketBufferHandlerThread;
+import logisticspipes.ticks.DebugGuiTickHandler;
 import logisticspipes.ticks.HudUpdateTick;
 import logisticspipes.ticks.QueuedTasks;
 import logisticspipes.ticks.RenderTickHandler;
 import logisticspipes.ticks.RoutingTableUpdateThread;
 import logisticspipes.ticks.ServerPacketBufferHandlerThread;
+import logisticspipes.ticks.VersionChecker;
+import logisticspipes.ticks.Watchdog;
 import logisticspipes.ticks.WorldTickHandler;
 import logisticspipes.utils.InventoryUtilFactory;
-import logisticspipes.utils.LiquidIdentifier;
+import logisticspipes.utils.FluidIdentifier;
 import net.minecraft.block.Block;
-import net.minecraft.client.Minecraft;
 import net.minecraft.item.Item;
+import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
-import net.minecraft.src.ModLoader;
-import net.minecraft.util.Icon;
-import net.minecraftforge.client.event.TextureStitchEvent;
+import net.minecraft.launchwrapper.LaunchClassLoader;
+import net.minecraftforge.client.MinecraftForgeClient;
 import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.ForgeSubscribe;
 import cpw.mods.fml.client.registry.RenderingRegistry;
+import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.Mod.FingerprintWarning;
 import cpw.mods.fml.common.Mod.Init;
@@ -117,11 +101,11 @@ import cpw.mods.fml.common.event.FMLServerStartingEvent;
 import cpw.mods.fml.common.event.FMLServerStoppingEvent;
 import cpw.mods.fml.common.network.NetworkMod;
 import cpw.mods.fml.common.network.NetworkRegistry;
+import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.common.registry.LanguageRegistry;
 import cpw.mods.fml.common.registry.TickRegistry;
 import cpw.mods.fml.relauncher.FMLInjectionData;
 import cpw.mods.fml.relauncher.Side;
-import cpw.mods.fml.relauncher.SideOnly;
 
 @Mod(
 		modid = "LogisticsPipes|Main",
@@ -141,61 +125,80 @@ import cpw.mods.fml.relauncher.SideOnly;
 				"after:factorization;" +
 				"after:GregTech_Addon;" +
 				"after:AppliedEnergistics;" +
-				"after:ThermalExpansion|Transport;" +
+				"after:ThermalExpansion;" +
 				"after:BetterStorage")
 @NetworkMod(
-		channels = {NetworkConstants.LOGISTICS_PIPES_CHANNEL_NAME},
+		channels = {LogisticsPipes.LOGISTICS_PIPES_CHANNEL_NAME},
 		packetHandler = PacketHandler.class,
-		clientSideRequired = true,
-		serverSideRequired = true)
+		clientSideRequired = true)
 public class LogisticsPipes {
 
+	public LogisticsPipes() {
+		LaunchClassLoader loader = (LaunchClassLoader)LogisticsPipes.class.getClassLoader();
+		loader.registerTransformer("logisticspipes.asm.LogisticsClassTransformer");
+		PacketHandler.intialize(); //To load PacketClasses after the ClassTransformer
+	}
+	
 	@Instance("LogisticsPipes|Main")
 	public static LogisticsPipes instance;
+	
+	//Network CHannel
+	public static final String LOGISTICS_PIPES_CHANNEL_NAME = "BCLP"; // BCLP: Buildcraft-Logisticspipes
 
 	//Log Requests
 	public static boolean DisplayRequests;
 
-	public static boolean DEBUG = "%DEBUG%".equals("%" + "DEBUG" + "%") || "%DEBUG%".equals("true");
-	public static boolean DEBUG_OVGEN = false;
-	public static String MCVersion = "%MCVERSION%";
+	public static final boolean DEBUG = "%DEBUG%".equals("%" + "DEBUG" + "%") || "%DEBUG%".equals("true");
+	public static final String MCVersion = "%MCVERSION%";
+	public static final String VERSION = "%VERSION%:%DEBUG%";
+	public static final boolean DEV_BUILD = VERSION.contains(".dev.") || DEBUG;
+	public static boolean WATCHDOG = false;
 	
 	private boolean certificateError = false;
 
-	// Items
+	// Logistics Pipes
 	public static Item LogisticsBasicPipe;
-	public static Item LogisticsRequestPipe;
-	public static Item LogisticsProviderPipe;
-	public static Item LogisticsCraftingPipe;
+	public static Item LogisticsRequestPipeMk1;
+	public static Item LogisticsRequestPipeMk2;
+	public static Item LogisticsProviderPipeMk1;
+	public static Item LogisticsProviderPipeMk2;
+	public static Item LogisticsCraftingPipeMk1;
+	public static Item LogisticsCraftingPipeMk2;
+	public static Item LogisticsCraftingPipeMk3;
 	public static Item LogisticsSatellitePipe;
 	public static Item LogisticsSupplierPipe;
-	public static Item LogisticsBuilderSupplierPipe;
-	public static Item LogisticsLiquidSupplierPipe;
-	public static Item LogisticsChassiPipe1;
-	public static Item LogisticsChassiPipe2;
-	public static Item LogisticsChassiPipe3;
-	public static Item LogisticsChassiPipe4;
-	public static Item LogisticsChassiPipe5;
-	public static Item LogisticsCraftingPipeMK2;
-	public static Item LogisticsRequestPipeMK2;
-	public static Item LogisticsProviderPipeMK2;
+	public static Item LogisticsChassisPipeMk1;
+	public static Item LogisticsChassisPipeMk2;
+	public static Item LogisticsChassisPipeMk3;
+	public static Item LogisticsChassisPipeMk4;
+	public static Item LogisticsChassisPipeMk5;
 	public static Item LogisticsRemoteOrdererPipe;
-	public static Item LogisticsApiaristAnalyserPipe;
+	public static Item LogisticsInvSysConPipe;
+	public static Item LogisticsEntrancePipe;
+	public static Item LogisticsDestinationPipe;
+	public static Item LogisticsFirewallPipe;
+	public static Item logisticsRequestTable;
+	
+	// Logistics Apiarist's Pipes
+	public static Item LogisticsApiaristAnalyzerPipe;
 	public static Item LogisticsApiaristSinkPipe;
-	public static Item LogisticsInvSysCon;
-	public static Item LogisticsEntrance;
-	public static Item LogisticsDestination;
-	public static Item LogisticsCraftingPipeMK3;
-	public static Item LogisticsFirewall;
 	
-	//Liquid Pipes
-	public static Item LogisticsLiquidConnector;
-	public static Item LogisticsLiquidBasic;
-	public static Item LogisticsLiquidInsertion;
-	public static Item LogisticsLiquidProvider;
-	public static Item LogisticsLiquidRequest;
+	// Logistics Fluid Pipes
+	public static Item LogisticsFluidBasicPipe;
+	public static Item LogisticsFluidRequestPipe;
+	public static Item LogisticsFluidProviderPipe;
+	public static Item LogisticsFluidSatellitePipe;
+	public static Item LogisticsFluidSupplierPipeMk1;
+	public static Item LogisticsFluidSupplierPipeMk2;
+	public static Item LogisticsFluidConnectorPipe;
+	public static Item LogisticsFluidInsertionPipe;
+	public static Item LogisticsFluidExtractorPipe;
+
+	// Logistics Modules/Upgrades
+	public static ItemModule ModuleItem;
+	public static ItemUpgrade UpgradeItem;
 	
-	
+	// Miscellaneous Items
 	public static Item LogisticsNetworkMonitior;
 	public static Item LogisticsRemoteOrderer;
 	public static Item LogisticsCraftingSignCreator;
@@ -204,31 +207,25 @@ public class LogisticsPipes {
 	public static ItemHUDArmor LogisticsHUDArmor;
 	public static Item LogisticsParts;
 	public static Item LogisticsUpgradeManager;
-	public static Item LogisticsLiquidContainer;
+	public static Item LogisticsFluidContainer;
+	public static Item LogisticsBrokenItem;
+	
+	// Logistics Blocks
+	public static Block LogisticsSign;
+	public static Block LogisticsSolidBlock;
 
-	public static ItemModule ModuleItem;
-	public static ItemUpgrade UpgradeItem;
+	public static Textures textures = new Textures();
 	
-	private Textures textures=new Textures();
-	
-	public static Class<? extends LogisticsPowerJuntionTileEntity_BuildCraft> powerTileEntity;
 	public static final String logisticsTileGenericPipeMapping = "logisticspipes.pipes.basic.LogisticsTileGenericPipe";
 	
 	public static CreativeTabLP LPCreativeTab = new CreativeTabLP();
 	
-	//Blocks
-	public static Block logisticsSign;
-	public static Block logisticsSolidBlock;
-	
 	public static Logger log;
 	public static Logger requestLog;
 	
-	public static Icon teststuff;
-	public static Icon teststuff2;
 	@Init
 	public void init(FMLInitializationEvent event) {
 		
-		SimpleServiceLocator.setBuildCraftProxy(new BuildCraftProxy());
 		RouterManager manager = new RouterManager();
 		SimpleServiceLocator.setRouterManager(manager);
 		SimpleServiceLocator.setDirectConnectionManager(manager);
@@ -237,7 +234,8 @@ public class LogisticsPipes {
 		SimpleServiceLocator.setInventoryUtilFactory(new InventoryUtilFactory());
 		SimpleServiceLocator.setSpecialConnectionHandler(new SpecialPipeConnection());
 		SimpleServiceLocator.setSpecialConnectionHandler(new SpecialTileConnection());
-		SimpleServiceLocator.setLogisticsLiquidManager(new LogisticsLiquidManager());
+		SimpleServiceLocator.setLogisticsFluidManager(new LogisticsFluidManager());
+		SimpleServiceLocator.setSpecialTankHandler(new SpecialTankHandler());
 		
 		if(event.getSide().isClient()) {
 			SimpleServiceLocator.buildCraftProxy.registerLocalization();
@@ -258,15 +256,25 @@ public class LogisticsPipes {
 		for(int i=0; i<Configs.MULTI_THREAD_NUMBER; i++) {
 			new RoutingTableUpdateThread(i);
 		}
-		MinecraftForge.EVENT_BUS.register(new LogisticsWorldManager());
-		MinecraftForge.EVENT_BUS.register(new LogisticsEventListener());
-		/* make sure server side texures are corectly indexed */
-		if(MainProxy.isServer())
-			textures.registerBlockIcons();
+		LogisticsEventListener eventListener = new LogisticsEventListener();
+		MinecraftForge.EVENT_BUS.register(eventListener);
+		GameRegistry.registerPlayerTracker(eventListener);
+		textures.registerBlockIcons(null);
+		
+		SimpleServiceLocator.buildCraftProxy.initProxyAndCheckVersion();
+
+		if(event.getSide().equals(Side.CLIENT)) {
+			TickRegistry.registerTickHandler(DebugGuiTickHandler.instance(), Side.CLIENT);
+		}
+		TickRegistry.registerTickHandler(DebugGuiTickHandler.instance(), Side.SERVER);
+		
+//		FMLInterModComms.sendMessage("Waila", "register", this.getClass()
+//		 .getPackage().getName()
+//		 + ".waila.WailaRegister.register");
 	}
 	
 	@PreInit
-	public void LoadConfig(FMLPreInitializationEvent evt) {
+	public void preInit(FMLPreInitializationEvent evt) {
 		Configs.load(evt);
 		log = evt.getModLog();
 		requestLog = Logger.getLogger("LogisticsPipes|Request");
@@ -285,25 +293,40 @@ public class LogisticsPipes {
 			log.severe("Certificate not correct");
 			log.severe("This in not a LogisticsPipes version from RS485.");
 		}
-		MinecraftForge.EVENT_BUS.register(this);
+		if (DEV_BUILD) {
+			log.fine("You are using a dev version.");
+			log.fine("While the dev versions contain cutting edge features, they may also contain more bugs.");
+			log.fine("Please report any you find to https://github.com/RS485/LogisticsPipes-Dev/issues");
+		}
+		SimpleServiceLocator.setBuildCraftProxy(new BuildCraftProxy());
+		SimpleServiceLocator.buildCraftProxy.replaceBlockGenericPipe();
 	}
 	
-	@SuppressWarnings("deprecation")
 	@PostInit
-	public void PostLoad(FMLPostInitializationEvent event) {
+	public void postInit(FMLPostInitializationEvent event) {
+		
+		boolean isClient = event.getSide() == Side.CLIENT;
 		
 		ProxyManager.load();
 		SpecialInventoryHandlerManager.load();
 
 		SimpleServiceLocator.specialpipeconnection.registerHandler(new TeleportPipes());
 		SimpleServiceLocator.specialtileconnection.registerHandler(new TesseractConnection());
+		SimpleServiceLocator.specialTankHandler.registerHandler(new BuildCraftTankHandler());
 		
-		LogisticsNetworkMonitior = new LogisticsItem(Configs.LOGISTICSNETWORKMONITOR_ID);
+		Object renderer = null;
+		if(isClient) {
+			renderer = new FluidContainerRenderer();
+		}
+		
+		LogisticsNetworkMonitior = new LogisticsNetworkManager(Configs.LOGISTICSNETWORKMONITOR_ID);
 		LogisticsNetworkMonitior.setUnlocalizedName("networkMonitorItem");
 		
 		LogisticsItemCard = new LogisticsItemCard(Configs.ITEM_CARD_ID);
 		LogisticsItemCard.setUnlocalizedName("logisticsItemCard");
-		//LogisticsItemCard.setTabToDisplayOn(CreativeTabs.tabRedstone);
+		if(isClient) {
+			MinecraftForgeClient.registerItemRenderer(LogisticsItemCard.itemID, (FluidContainerRenderer)renderer);
+		}
 		
 		LogisticsRemoteOrderer = new RemoteOrderer(Configs.LOGISTICSREMOTEORDERER_ID);
 		LogisticsRemoteOrderer.setUnlocalizedName("remoteOrdererItem");
@@ -312,7 +335,7 @@ public class LogisticsPipes {
 		LogisticsCraftingSignCreator.setUnlocalizedName("CraftingSignCreator");
 		
 		int renderIndex;
-		if(MainProxy.isClient()) {
+		if(isClient) {
 			renderIndex = RenderingRegistry.addNewArmourRendererPrefix("LogisticsHUD");
 		} else {
 			renderIndex = 0;
@@ -331,7 +354,7 @@ public class LogisticsPipes {
 		
 		LogisticsItemDisk = new ItemDisk(Configs.ITEM_DISK_ID);
 		LogisticsItemDisk.setUnlocalizedName("itemDisk");
-		
+
 		UpgradeItem = new ItemUpgrade(Configs.ITEM_UPGRADE_ID);
 		UpgradeItem.setUnlocalizedName("itemUpgrade");
 		UpgradeItem.loadUpgrades();
@@ -340,29 +363,31 @@ public class LogisticsPipes {
 		LogisticsUpgradeManager = new LogisticsItem(Configs.ITEM_UPGRADE_MANAGER_ID);
 		LogisticsUpgradeManager.setUnlocalizedName("upgradeManagerItem");
 		
-		if(DEBUG) {
-			LogisticsLiquidContainer = new LogisticsLiquidContainer(Configs.ITEM_LIQUID_CONTAINER_ID);
-			LogisticsLiquidContainer.setUnlocalizedName("logisticsLiquidContainer");
+		LogisticsFluidContainer = new LogisticsFluidContainer(Configs.ITEM_LIQUID_CONTAINER_ID);
+		LogisticsFluidContainer.setUnlocalizedName("logisticsFluidContainer");
+		if(isClient) {
+			MinecraftForgeClient.registerItemRenderer(LogisticsFluidContainer.itemID, (FluidContainerRenderer)renderer);
 		}
+		
+		LogisticsBrokenItem = new LogisticsBrokenItem(Configs.ITEM_BROKEN_ID);
+		LogisticsBrokenItem.setUnlocalizedName("brokenItem");
 		
 		SimpleServiceLocator.buildCraftProxy.registerPipes(event.getSide());
 		
-		ModLoader.addName(LogisticsNetworkMonitior, "Network monitor");
-		ModLoader.addName(LogisticsItemCard, "Logistics Item Card");
-		ModLoader.addName(LogisticsRemoteOrderer, "Remote Orderer");
-		ModLoader.addName(LogisticsCraftingSignCreator, "Crafting Sign Creator");
-		ModLoader.addName(ModuleItem, "BlankModule");
-		ModLoader.addName(LogisticsItemDisk, "Logistics Disk");
+		LanguageRegistry.instance().addNameForObject(LogisticsNetworkMonitior, "en_US", "Network monitor");
+		LanguageRegistry.instance().addNameForObject(LogisticsItemCard, "en_US", "Logistics Item Card");
+		LanguageRegistry.instance().addNameForObject(LogisticsRemoteOrderer, "en_US", "Remote Orderer");
+		LanguageRegistry.instance().addNameForObject(LogisticsCraftingSignCreator, "en_US", "Crafting Sign Creator");
+		LanguageRegistry.instance().addNameForObject(ModuleItem, "en_US", "BlankModule");
+		LanguageRegistry.instance().addNameForObject(LogisticsItemDisk, "en_US", "Logistics Disk");
 		LanguageRegistry.instance().addNameForObject(LogisticsHUDArmor, "en_US", "Logistics HUD Glasses");
 		LanguageRegistry.instance().addNameForObject(new ItemStack(LogisticsParts,1,0), "en_US", "Logistics HUD Bow");
 		LanguageRegistry.instance().addNameForObject(new ItemStack(LogisticsParts,1,1), "en_US", "Logistics HUD Glass");
 		LanguageRegistry.instance().addNameForObject(new ItemStack(LogisticsParts,1,2), "en_US", "Logistics HUD Nose Bridge");
 		LanguageRegistry.instance().addNameForObject(new ItemStack(LogisticsParts,1,3), "en_US", "Nano Hopper");
 		LanguageRegistry.instance().addNameForObject(new ItemStack(LogisticsUpgradeManager,1,0), "en_US", "Upgrade Manager");
-		
-		if(DEBUG) {
-			LanguageRegistry.instance().addNameForObject(new ItemStack(LogisticsLiquidContainer,1,0), "en_US", "Logistics Liquid Container");
-		}
+		LanguageRegistry.instance().addNameForObject(new ItemStack(LogisticsBrokenItem,1,0), "en_US", "Logistics Broken Item");
+		LanguageRegistry.instance().addNameForObject(new ItemStack(LogisticsFluidContainer,1,0), "en_US", "Logistics Fluid Container");
 		
 		LanguageRegistry.instance().addStringLocalization("itemGroup.Logistics_Pipes", "en_US", "Logistics Pipes");
 		
@@ -371,52 +396,41 @@ public class LogisticsPipes {
 		SimpleServiceLocator.thaumCraftProxy.addCraftingRecipes();
 		SimpleServiceLocator.addCraftingRecipeProvider(new AutoWorkbench());
 		SimpleServiceLocator.addCraftingRecipeProvider(new AssemblyAdvancedWorkbench());
+		SimpleServiceLocator.addCraftingRecipeProvider(new AssemblyTable());
 		SimpleServiceLocator.addCraftingRecipeProvider(new SolderingStation());
+		SimpleServiceLocator.addCraftingRecipeProvider(new LogisticsCraftingTable());
 		if (RollingMachine.load())
 			SimpleServiceLocator.addCraftingRecipeProvider(new RollingMachine());
+		if(ImmibisCraftingTableMk2.load())
+			SimpleServiceLocator.addCraftingRecipeProvider(new ImmibisCraftingTableMk2());
 		
 		SolderingStationRecipes.loadRecipe();
 		
 		//Blocks
-		logisticsSign = new LogisticsSignBlock(Configs.LOGISTICS_SIGN_ID);
-		ModLoader.registerBlock(logisticsSign);
-		logisticsSign.setUnlocalizedName("logisticsSign");
-		logisticsSolidBlock = new LogisticsSolidBlock(Configs.LOGISTICS_SOLID_BLOCK_ID);
-		ModLoader.registerBlock(logisticsSolidBlock, LogisticsSolidBlockItem.class);
-		logisticsSign.setUnlocalizedName("logisticsSolidBlock");
-		//Power Junction
-		if(SimpleServiceLocator.IC2Proxy.hasIC2()) {
-			if(SimpleServiceLocator.ccProxy.isCC()) {
-				powerTileEntity = LogisticsPowerJuntionTileEntity_CC_IC2_BuildCraft.class;
-			} else {
-				powerTileEntity = LogisticsPowerJuntionTileEntity_IC2_BuildCraft.class;
-			}
-		} else {
-			if(SimpleServiceLocator.ccProxy.isCC()) {
-				powerTileEntity = LogisticsPowerJuntionTileEntity_CC_BuildCraft.class;
-			} else {
-				powerTileEntity = LogisticsPowerJuntionTileEntity_BuildCraft.class;
-			}
-		}
+		LogisticsSign = new LogisticsSignBlock(Configs.LOGISTICS_SIGN_ID);
+		GameRegistry.registerBlock(LogisticsSign, ItemBlock.class, null);
+		LogisticsSign.setUnlocalizedName("logisticsSign");
+		LogisticsSolidBlock = new LogisticsSolidBlock(Configs.LOGISTICS_SOLID_BLOCK_ID);
+		GameRegistry.registerBlock(LogisticsSolidBlock, LogisticsSolidBlockItem.class, null);
+		LogisticsSolidBlock.setUnlocalizedName("logisticsSolidBlock");
 		
-		//LogisticsTileGenerticPipe
-		if(SimpleServiceLocator.ccProxy.isCC()) {
-			BuildCraftProxy.logisticsTileGenericPipe = LogisticsTileGenericPipe_CC.class;
-		} else if(!Configs.LOGISTICS_TILE_GENERIC_PIPE_REPLACEMENT_DISABLED) {
-			BuildCraftProxy.logisticsTileGenericPipe = LogisticsTileGenericPipe.class;
-		}
-		
-		MainProxy.proxy.registerTileEntitis();
+		MainProxy.proxy.registerTileEntities();
 
 		RecipeManager.loadRecipes();
 		
 		//Registering special particles
 		MainProxy.proxy.registerParticles();
 		
-		//init Liquids
-		LiquidIdentifier.initFromForge(false);
-		LiquidIdentifier.get(9, 0, "water");
-		LiquidIdentifier.get(11, 0, "lava");
+		//init Fluids
+		FluidIdentifier.initFromForge(false);
+		FluidIdentifier.get(9, 0, "water");
+		FluidIdentifier.get(11, 0, "lava");
+
+		if (!FMLCommonHandler.instance().getModName().contains("MCPC") && ((Configs.WATCHDOG_CLIENT && isClient) || Configs.WATCHDOG_SERVER)) {
+			new Watchdog(isClient);
+			WATCHDOG = true;
+		}
+		new VersionChecker();
 	}
 	
 	@ServerStopping
@@ -424,7 +438,8 @@ public class LogisticsPipes {
 		SimpleServiceLocator.routerManager.serverStopClean();
 		QueuedTasks.clearAllTasks();
 		HudUpdateTick.clearUpdateFlags();
-		BaseLogicSatellite.cleanup();
+		PipeItemsSatelliteLogistics.cleanup();
+		PipeFluidSatellite.cleanup();
 		ServerRouter.cleanup();
 		if(event.getSide().equals(Side.CLIENT)) {
 			LogisticsHUDRenderer.instance().clear();
@@ -435,20 +450,7 @@ public class LogisticsPipes {
 	public void registerCommands(FMLServerStartingEvent event) {
 		event.registerServerCommand(new LogisticsPipesCommand());
 	}
-	/*
-	 * subscribe forge pre stich event to register common texture
-	 */
-	@ForgeSubscribe
-	@SideOnly(Side.CLIENT)
-	public void textureHook(TextureStitchEvent.Pre event) throws IOException{
-		if (event.map == Minecraft.getMinecraft().renderEngine.textureMapItems) {
-			textures.registerItemIcons(event.map);
-		}
-		if (event.map == Minecraft.getMinecraft().renderEngine.textureMapBlocks) {
-			//teststuff=OverlayManager.RegisterOverlays(event.map, "basic", "status_overlay" ,OverlayType.powered ,OverlayType.routed, OverlayType.unpowered, OverlayType.security);
-			textures.registerBlockIcons();
-		}
-	}
+	
 	@FingerprintWarning
 	public void certificateWarning(FMLFingerprintViolationEvent warning) {
 		if(!DEBUG) {

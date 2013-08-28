@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import logisticspipes.api.IRoutedPowerProvider;
-import logisticspipes.interfaces.ILogisticsModule;
 import logisticspipes.interfaces.ISendRoutedItem;
 import logisticspipes.interfaces.IWorldProvider;
 import logisticspipes.interfaces.routing.IFilter;
@@ -16,20 +15,24 @@ import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.utils.ItemIdentifier;
 import logisticspipes.utils.Pair3;
 import logisticspipes.utils.SinkReply;
+import net.minecraft.client.renderer.texture.IconRegister;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.Icon;
 import net.minecraftforge.common.ForgeDirection;
 import buildcraft.api.inventory.ISpecialInventory;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 
-public class ModuleApiaristRefiller implements ILogisticsModule {
+public class ModuleApiaristRefiller extends LogisticsModule {
 
 	private IInventoryProvider _invProvider;
 	private IRoutedPowerProvider _power;
 	private ISendRoutedItem _itemSender;
-	private int xCoord;
-	private int yCoord;
-	private int zCoord;
+
+
+
 	private IWorldProvider _world;
 
 	private int currentTickCount = 0;
@@ -45,12 +48,12 @@ public class ModuleApiaristRefiller implements ILogisticsModule {
 	}
 
 	@Override
-	public SinkReply sinksItem(ItemIdentifier item, int bestPriority, int bestCustomPriority) {
+	public SinkReply sinksItem(ItemIdentifier item, int bestPriority, int bestCustomPriority, boolean allowDefault, boolean includeInTransit) {
 		return null;
 	}
 
 	@Override
-	public ILogisticsModule getSubModule(int slot) {
+	public LogisticsModule getSubModule(int slot) {
 		return null;
 	}
 
@@ -60,24 +63,39 @@ public class ModuleApiaristRefiller implements ILogisticsModule {
 	@Override
 	public void writeToNBT(NBTTagCompound nbttagcompound) {}
 
-	@Override
-	public void registerPosition(int xCoord, int yCoord, int zCoord, int slot) {
-		this.xCoord = xCoord;
-		this.yCoord = yCoord;
-		this.zCoord = zCoord;
+
+	@Override 
+	public void registerSlot(int slot) {
 	}
+	
+	@Override 
+	public final int getX() {
+		return this._invProvider.getX();
+	}
+	@Override 
+	public final int getY() {
+		return this._invProvider.getY();
+	}
+	
+	@Override 
+	public final int getZ() {
+		return this._invProvider.getZ();
+	}
+
 
 	@Override
 	public void tick() {
 		if (++currentTickCount < ticksToOperation) return;
 		currentTickCount = 0;
-		IInventory inv = _invProvider.getRawInventory();
+		IInventory inv = _invProvider.getRealInventory();
 		if (!(inv instanceof ISpecialInventory)) return;
 		ISpecialInventory sinv = (ISpecialInventory) inv;
 		ForgeDirection direction = _invProvider.inventoryOrientation().getOpposite();
 		ItemStack[] stack = sinv.extractItem(false, direction, 1);
 		if (stack == null || stack.length < 1 || stack[0] == null) return;
 		if (!(_power.canUseEnergy(100))) return;
+		
+		currentTickCount = ticksToOperation;
 
 		if(reinsertBee(stack[0], sinv, direction))
 			return;
@@ -99,8 +117,8 @@ public class ModuleApiaristRefiller implements ILogisticsModule {
 					}
 					_power.useEnergy(100);
 					inv.extractItem(true, direction, 1);
-					MainProxy.sendSpawnParticlePacket(Particles.VioletParticle, this.xCoord, this.yCoord, this.zCoord, _world.getWorld(), 5);
-					MainProxy.sendSpawnParticlePacket(Particles.BlueParticle, this.xCoord, this.yCoord, this.zCoord, _world.getWorld(), 5);
+					MainProxy.sendSpawnParticlePacket(Particles.VioletParticle, this.getX(), this.getY(), this.getZ(), _world.getWorld(), 5);
+					MainProxy.sendSpawnParticlePacket(Particles.BlueParticle, this.getX(), this.getY(), this.getZ(), _world.getWorld(), 5);
 					return true;
 				}
 			}
@@ -114,8 +132,8 @@ public class ModuleApiaristRefiller implements ILogisticsModule {
 					}
 					_power.useEnergy(100);
 					inv.extractItem(true, direction, 1);
-					MainProxy.sendSpawnParticlePacket(Particles.VioletParticle, this.xCoord, this.yCoord, this.zCoord, _world.getWorld(), 5);
-					MainProxy.sendSpawnParticlePacket(Particles.BlueParticle, this.xCoord, this.yCoord, this.zCoord, _world.getWorld(), 5);
+					MainProxy.sendSpawnParticlePacket(Particles.VioletParticle, this.getX(), this.getY(), this.getZ(), _world.getWorld(), 5);
+					MainProxy.sendSpawnParticlePacket(Particles.BlueParticle, this.getX(), this.getY(), this.getZ(), _world.getWorld(), 5);
 					return true;
 				}
 			}
@@ -145,5 +163,11 @@ public class ModuleApiaristRefiller implements ILogisticsModule {
 	@Override
 	public boolean recievePassive() {
 		return true;
+	}
+
+	@Override
+	@SideOnly(Side.CLIENT)
+	public Icon getIconTexture(IconRegister register) {
+		return register.registerIcon("logisticspipes:itemModule/ModuleApiaristRefiller");
 	}
 }

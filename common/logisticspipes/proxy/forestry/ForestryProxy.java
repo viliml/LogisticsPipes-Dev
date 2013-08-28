@@ -1,6 +1,5 @@
 package logisticspipes.proxy.forestry;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 import logisticspipes.LogisticsPipes;
@@ -13,16 +12,21 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.CraftingManager;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.Icon;
 import net.minecraft.world.World;
-import net.minecraftforge.liquids.LiquidDictionary;
-import net.minecraftforge.liquids.LiquidStack;
+import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.oredict.ShapedOreRecipe;
 import buildcraft.BuildCraftCore;
 import buildcraft.BuildCraftSilicon;
 import buildcraft.BuildCraftTransport;
-import forestry.api.apiculture.BeeManager;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 import forestry.api.apiculture.EnumBeeChromosome;
+import forestry.api.apiculture.EnumBeeType;
 import forestry.api.apiculture.IAlleleBeeSpecies;
+import forestry.api.apiculture.IBeeRoot;
+import forestry.api.core.ForestryAPI;
 import forestry.api.core.ItemInterface;
 import forestry.api.genetics.AlleleManager;
 import forestry.api.genetics.IAllele;
@@ -34,33 +38,28 @@ public class ForestryProxy implements IForestryProxy {
 	public ForestryProxy() {
 		boolean initsuccessful = false;
 		try {
-			tileMachine = Class.forName("forestry.core.gadgets.TileMachine");
-			machine_in_TileMachine = tileMachine.getDeclaredField("machine");
-			machine_in_TileMachine.setAccessible(true);
-			analyserClass = Class.forName("forestry.core.gadgets.MachineAnalyzer");
+			analyserClass = Class.forName("forestry.core.gadgets.TileAnalyzer");
 			Class<?> stringUtil = Class.forName("forestry.core.utils.StringUtil");
 			localize = stringUtil.getDeclaredMethod("localize", new Class[]{String.class});
 			localize.setAccessible(true);
 			propolis = ItemInterface.getItem("propolis").getItem();
 			pollen = ItemInterface.getItem("pollen").getItem();
-			honey = LiquidDictionary.getLiquid("honey", 1500);	
+			honey = FluidRegistry.getFluidStack("honey", 1500);
+			root = (IBeeRoot) AlleleManager.alleleRegistry.getSpeciesRoot("rootBees");
 			initsuccessful = true;
 		} catch(Exception e) {
-			if(LogisticsPipes.DEBUG) {
-				e.printStackTrace();
-			}
+			e.printStackTrace();
 		}
 		has_all = initsuccessful;
 	}
 	
-	private Class<?> tileMachine;
-	private Field machine_in_TileMachine;
 	private Class<?> analyserClass;
 	private Method localize;
 	private Item propolis;
 	private Item pollen;
-	private LiquidStack honey;
+	private FluidStack honey;
 	private final boolean has_all;
+	private IBeeRoot root;
 
 	/**
 	 * Checks if item is bee via ItemIdentifier.
@@ -80,7 +79,7 @@ public class ForestryProxy implements IForestryProxy {
 	@Override
 	public boolean isBee(ItemStack item) {
 		if(!has_all) return false;
-		return BeeManager.beeInterface.isBee(item);
+		return root.isMember(item);
 	}
 
 	/**
@@ -102,7 +101,7 @@ public class ForestryProxy implements IForestryProxy {
 	@Override
 	public boolean isAnalysedBee(ItemStack item) {
 		if(!isBee(item)) return false;
-		return BeeManager.beeInterface.getBee(item).isAnalyzed();
+		return root.getMember(item).isAnalyzed();
 	}
 	
 	/**
@@ -114,16 +113,11 @@ public class ForestryProxy implements IForestryProxy {
 	public boolean isTileAnalyser(TileEntity tile) {
 		if(!has_all) return false;
 		try {
-			if(tileMachine.isAssignableFrom(tile.getClass())) {
-				Object obj = machine_in_TileMachine.get(tile);
-				if(analyserClass.isAssignableFrom(obj.getClass())) {
-					return true;
-				}
+			if(analyserClass.isAssignableFrom(tile.getClass())) {
+				return true;
 			}
 		} catch (Exception e) {
-			if(LogisticsPipes.DEBUG) {
-				e.printStackTrace();
-			}
+			e.printStackTrace();
 		}
 		return false;
 	}
@@ -148,7 +142,7 @@ public class ForestryProxy implements IForestryProxy {
 		if(!has_all) return false;
 		if(!(forestry.api.genetics.AlleleManager.alleleRegistry.getAllele(allele) instanceof IAlleleBeeSpecies)) return false;
 		if(!((IAlleleSpecies)forestry.api.genetics.AlleleManager.alleleRegistry.getAllele(allele)).isSecret()) return true;
-		return BeeManager.breedingManager.getApiaristTracker(world, MainProxy.proxy.getClientPlayer().username).isDiscovered((IAlleleSpecies)forestry.api.genetics.AlleleManager.alleleRegistry.getAllele(allele));
+		return root.getBreedingTracker(world, MainProxy.proxy.getClientPlayer().username).isDiscovered((IAlleleSpecies)forestry.api.genetics.AlleleManager.alleleRegistry.getAllele(allele));
 	}
 
 	/**
@@ -253,7 +247,7 @@ public class ForestryProxy implements IForestryProxy {
 	@Override
 	public String getFirstAlleleId(ItemStack bee) {
 		if(!isBee(bee)) return "";
-		return BeeManager.beeInterface.getBee(bee).getGenome().getPrimaryAsBee().getUID();
+		return root.getMember(bee).getGenome().getPrimary().getUID();
 	}
 	
 	/**
@@ -264,7 +258,7 @@ public class ForestryProxy implements IForestryProxy {
 	@Override
 	public String getSecondAlleleId(ItemStack bee) {
 		if(!isBee(bee)) return "";
-		return BeeManager.beeInterface.getBee(bee).getGenome().getSecondaryAsBee().getUID();
+		return root.getMember(bee).getGenome().getSecondary().getUID();
 	}
 
 	/**
@@ -275,7 +269,7 @@ public class ForestryProxy implements IForestryProxy {
 	@Override
 	public boolean isDrone(ItemStack bee) {
 		if(!isBee(bee)) return false;
-		return BeeManager.beeInterface.isDrone(bee);
+		return root.isDrone(bee);
 	}
 
 	/**
@@ -299,7 +293,7 @@ public class ForestryProxy implements IForestryProxy {
 	@Override
 	public boolean isQueen(ItemStack bee) {
 		if(!isBee(bee)) return false;
-		return BeeManager.beeInterface.isMated(bee);
+		return root.isMated(bee);
 	}
 
 	/**
@@ -310,7 +304,7 @@ public class ForestryProxy implements IForestryProxy {
 	@Override
 	public boolean isPurebred(ItemStack bee) {
 		if(!isBee(bee)) return false;
-		return BeeManager.beeInterface.getBee(bee).isPureBred(EnumBeeChromosome.SPECIES);
+		return root.getMember(bee).isPureBred(EnumBeeChromosome.SPECIES.ordinal());
 	}
 
 	/**
@@ -321,7 +315,7 @@ public class ForestryProxy implements IForestryProxy {
 	@Override
 	public boolean isNocturnal(ItemStack bee) {
 		if(!isBee(bee)) return false;
-		return BeeManager.beeInterface.getBee(bee).getGenome().getNocturnal();
+		return root.getMember(bee).getGenome().getNocturnal();
 	}
 
 	/**
@@ -332,7 +326,7 @@ public class ForestryProxy implements IForestryProxy {
 	@Override
 	public boolean isPureNocturnal(ItemStack bee) {
 		if(!isBee(bee)) return false;
-		return BeeManager.beeInterface.getBee(bee).getGenome().getNocturnal() && BeeManager.beeInterface.getBee(bee).isPureBred(EnumBeeChromosome.NOCTURNAL);
+		return root.getMember(bee).getGenome().getNocturnal() && root.getMember(bee).isPureBred(EnumBeeChromosome.NOCTURNAL.ordinal());
 	}
 
 	/**
@@ -343,7 +337,7 @@ public class ForestryProxy implements IForestryProxy {
 	@Override
 	public boolean isFlyer(ItemStack bee) {
 		if(!isBee(bee)) return false;
-		return BeeManager.beeInterface.getBee(bee).getGenome().getTolerantFlyer();
+		return root.getMember(bee).getGenome().getTolerantFlyer();
 	}
 
 	/**
@@ -354,7 +348,7 @@ public class ForestryProxy implements IForestryProxy {
 	@Override
 	public boolean isPureFlyer(ItemStack bee) {
 		if(!isBee(bee)) return false;
-		return BeeManager.beeInterface.getBee(bee).getGenome().getTolerantFlyer() && BeeManager.beeInterface.getBee(bee).isPureBred(EnumBeeChromosome.TOLERANT_FLYER);
+		return root.getMember(bee).getGenome().getTolerantFlyer() && root.getMember(bee).isPureBred(EnumBeeChromosome.TOLERANT_FLYER.ordinal());
 	}
 
 	/**
@@ -365,7 +359,7 @@ public class ForestryProxy implements IForestryProxy {
 	@Override
 	public boolean isCave(ItemStack bee) {
 		if(!isBee(bee)) return false;
-		return BeeManager.beeInterface.getBee(bee).getGenome().getCaveDwelling();
+		return root.getMember(bee).getGenome().getCaveDwelling();
 	}
 	
 	/**
@@ -376,7 +370,7 @@ public class ForestryProxy implements IForestryProxy {
 	@Override
 	public boolean isPureCave(ItemStack bee) {
 		if(!isBee(bee)) return false;
-		return BeeManager.beeInterface.getBee(bee).getGenome().getCaveDwelling() && BeeManager.beeInterface.getBee(bee).isPureBred(EnumBeeChromosome.CAVE_DWELLING);
+		return root.getMember(bee).getGenome().getCaveDwelling() && root.getMember(bee).isPureBred(EnumBeeChromosome.CAVE_DWELLING.ordinal());
 	}
 
 	/**
@@ -390,9 +384,7 @@ public class ForestryProxy implements IForestryProxy {
 		try {
 			return (String) localize.invoke(null, new Object[]{input.toLowerCase()});
 		} catch (Exception e) {
-			if(LogisticsPipes.DEBUG) {
-				e.printStackTrace();
-			}
+			e.printStackTrace();
 			return input;
 		}
 	}
@@ -454,7 +446,7 @@ public class ForestryProxy implements IForestryProxy {
 		
 		
 		
-		RecipeManagers.carpenterManager.addRecipe(25, honey, new ItemStack(LogisticsPipes.LogisticsBasicPipe, 1, 0), new ItemStack(LogisticsPipes.LogisticsApiaristAnalyserPipe, 1, 0), new Object[] { 
+		RecipeManagers.carpenterManager.addRecipe(25, honey, new ItemStack(LogisticsPipes.LogisticsBasicPipe, 1, 0), new ItemStack(LogisticsPipes.LogisticsApiaristAnalyzerPipe, 1, 0), new Object[] { 
 			"CGC", 
 			"r r", 
 			"CrC", 
@@ -463,7 +455,7 @@ public class ForestryProxy implements IForestryProxy {
 			Character.valueOf('r'), Item.redstone, 
 		});
 		
-		RecipeManagers.carpenterManager.addRecipe(25, honey, new ItemStack(LogisticsPipes.LogisticsBasicPipe, 1, 0), new ItemStack(LogisticsPipes.LogisticsApiaristAnalyserPipe, 1, 0), new Object[] { 
+		RecipeManagers.carpenterManager.addRecipe(25, honey, new ItemStack(LogisticsPipes.LogisticsBasicPipe, 1, 0), new ItemStack(LogisticsPipes.LogisticsApiaristAnalyzerPipe, 1, 0), new Object[] { 
 			"CGC", 
 			"r r", 
 			"CrC", 
@@ -534,7 +526,7 @@ public class ForestryProxy implements IForestryProxy {
 			Character.valueOf('B'), new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.BLANK)
 		}));
 		
-		CraftingManager.getInstance().addRecipe(new ItemStack(LogisticsPipes.LogisticsApiaristAnalyserPipe, 1, 0), new Object[] { 
+		CraftingManager.getInstance().addRecipe(new ItemStack(LogisticsPipes.LogisticsApiaristAnalyzerPipe, 1, 0), new Object[] { 
 			"CGC", 
 			"rBr", 
 			"CrC", 
@@ -544,7 +536,7 @@ public class ForestryProxy implements IForestryProxy {
 			Character.valueOf('B'), new ItemStack(LogisticsPipes.LogisticsBasicPipe, 1, 0)
 		});
 		
-		CraftingManager.getInstance().addRecipe(new ItemStack(LogisticsPipes.LogisticsApiaristAnalyserPipe, 1, 0), new Object[] { 
+		CraftingManager.getInstance().addRecipe(new ItemStack(LogisticsPipes.LogisticsApiaristAnalyzerPipe, 1, 0), new Object[] { 
 			"CGC", 
 			"rBr", 
 			"CrC", 
@@ -562,9 +554,6 @@ public class ForestryProxy implements IForestryProxy {
 			Character.valueOf('r'), Item.redstone, 
 			Character.valueOf('B'), new ItemStack(LogisticsPipes.LogisticsBasicPipe, 1, 0)
 		});
-
-		//ModLoader.addShapelessRecipe(new ItemStack(LogisticsPipes.LogisticsApiaristAnalyserPipe, 1, 0), new Object[]{new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.BEEANALYZER),new ItemStack(LogisticsPipes.LogisticsBasicPipe, 1, 0)});
-		//ModLoader.addShapelessRecipe(new ItemStack(LogisticsPipes.LogisticsApiaristSinkPipe, 1, 0), new Object[]{new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.BEESINK),new ItemStack(LogisticsPipes.LogisticsBasicPipe, 1, 0)});
 	}
 	
 	/**
@@ -573,21 +562,14 @@ public class ForestryProxy implements IForestryProxy {
 	 * @param phase special phase of the bee.
 	 */
 	@Override
-	public int getIconIndexForAlleleId(String uid, int phase) {
-		if(!has_all) return 0;
-		if (!(forestry.api.genetics.AlleleManager.alleleRegistry.getAllele(uid) instanceof IAlleleSpecies))
-			return 0;
-		IAlleleSpecies species = (IAlleleSpecies) forestry.api.genetics.AlleleManager.alleleRegistry.getAllele(uid);
-		int indexOffset = 0;
-		if (species != null) {
-			indexOffset = 16 * species.getHumidity().getIconIndex();
-		}
-		if (phase == 0)
-			return indexOffset + 0 + 2;
-		if (phase == 1) {
-			return indexOffset + 3 + 2;
-		}
-		return indexOffset + 6 + 2;
+	@SideOnly(Side.CLIENT)
+	public Icon getIconIndexForAlleleId(String uid, int phase) {
+		if(!has_all) return null;
+		IAllele bSpecies = forestry.api.genetics.AlleleManager.alleleRegistry.getAllele(uid);
+		if (!(bSpecies instanceof IAlleleBeeSpecies))
+			bSpecies = root.getDefaultTemplate()[forestry.api.apiculture.EnumBeeChromosome.SPECIES.ordinal()];
+		IAlleleBeeSpecies species = (IAlleleBeeSpecies) bSpecies;
+		return species.getIcon(EnumBeeType.DRONE, phase);
 	}
 
 	/**
@@ -596,22 +578,13 @@ public class ForestryProxy implements IForestryProxy {
 	 * @param phase special phase of the bee.
 	 */
 	@Override
+	@SideOnly(Side.CLIENT)
 	public int getColorForAlleleId(String uid, int phase) {
-		if(!has_all) return 0;
-		if (!(forestry.api.genetics.AlleleManager.alleleRegistry.getAllele(uid) instanceof IAlleleSpecies))
-			return 0;
-		IAlleleSpecies species = (IAlleleSpecies) forestry.api.genetics.AlleleManager.alleleRegistry.getAllele(uid);
-		//@TODO: fixme
-		/*if (species != null) {
-			if (phase == 0)
-				return species.getPrimaryColor();
-			if (phase == 1) {
-				return species.getSecondaryColor();
-			}
+		if(!has_all) return 16777215;
+		if (!(forestry.api.genetics.AlleleManager.alleleRegistry.getAllele(uid) instanceof IAlleleBeeSpecies))
 			return 16777215;
-		}*/
-
-		return 16777215;
+		IAlleleBeeSpecies species = (IAlleleBeeSpecies) forestry.api.genetics.AlleleManager.alleleRegistry.getAllele(uid);
+		return species.getIconColour(phase);
 	}
 
 	/**
@@ -620,8 +593,14 @@ public class ForestryProxy implements IForestryProxy {
 	 * @return The number of render passes for the allele.
 	 */
 	@Override
+	@SideOnly(Side.CLIENT)
 	public int getRenderPassesForAlleleId(String uid) {
 		return 3;
 	}
 
+	@Override
+	@SideOnly(Side.CLIENT)
+	public Icon getIconFromTextureManager(String name) {
+		return ForestryAPI.textureManager.getDefault(name);
+	}
 }

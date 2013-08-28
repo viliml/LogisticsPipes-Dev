@@ -18,6 +18,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.inventory.GuiContainer;
 import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.inventory.Container;
+import net.minecraft.util.ResourceLocation;
+
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
 
@@ -33,6 +35,10 @@ public abstract class KraphtBaseGuiScreen extends GuiContainer implements IGuiID
 		Red
 	}
 	
+	protected static final ResourceLocation ITEMSINK = new ResourceLocation("logisticspipes", "textures/gui/itemsink.png");
+	protected static final ResourceLocation SUPPLIER = new ResourceLocation("logisticspipes", "textures/gui/supplier.png");
+	protected static final ResourceLocation CHASSI1 = new ResourceLocation("logisticspipes", "textures/gui/itemsink.png");
+	
 	protected int right;
 	protected int bottom;
 	protected int xCenter;
@@ -42,7 +48,7 @@ public abstract class KraphtBaseGuiScreen extends GuiContainer implements IGuiID
 	
 	private SubGuiScreen subGui;
 	
-	private List<IRenderSlot> slots = new ArrayList<IRenderSlot>();
+	protected List<IRenderSlot> slots = new ArrayList<IRenderSlot>();
 
 	public KraphtBaseGuiScreen(int xSize, int ySize, int xCenterOffset, int yCenterOffset){
 		this(new DummyContainer(null, null), xSize, ySize, xCenterOffset, yCenterOffset);
@@ -149,9 +155,11 @@ public abstract class KraphtBaseGuiScreen extends GuiContainer implements IGuiID
 			if(!subGui.hasSubGui()) {
 		        GL11.glDisable(GL11.GL_DEPTH_TEST);
 				super.drawDefaultBackground();
-		        GL11.glEnable(GL11.GL_DEPTH_TEST);
-			}
+			    GL11.glEnable(GL11.GL_DEPTH_TEST);
+				}
+			GL11.glDisable(GL11.GL_DEPTH_TEST);
 			subGui.drawScreen(par1, par2, par3);
+		    GL11.glEnable(GL11.GL_DEPTH_TEST);
 			GL11.glTranslatef(0.0F, 0.0F, -101.0F);
 	        RenderHelper.enableStandardItemLighting();
 		} else {
@@ -213,7 +221,7 @@ public abstract class KraphtBaseGuiScreen extends GuiContainer implements IGuiID
 				if(slot.drawSlotBackground()) 
 					BasicGuiHelper.drawSlotBackground(mc, slot.getXPos(), slot.getYPos());
 				if(((IItemTextureRenderSlot)slot).drawSlotIcon() && !((IItemTextureRenderSlot)slot).customRender(mc, zLevel)) 
-					BasicGuiHelper.renderIconAt(mc, slot.getXPos() + 1, slot.getYPos() + 1, zLevel, ((IItemTextureRenderSlot)slot).getTextureId(), ((IItemTextureRenderSlot)slot).getTextureIcon());
+					BasicGuiHelper.renderIconAt(mc, slot.getXPos() + 1, slot.getYPos() + 1, zLevel,  ((IItemTextureRenderSlot)slot).getTextureIcon());
 			} else if(slot instanceof ISmallColorRenderSlot) {
 				if(slot.drawSlotBackground())
 					BasicGuiHelper.drawSmallSlotBackground(mc, slot.getXPos(), slot.getYPos());

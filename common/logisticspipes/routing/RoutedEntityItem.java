@@ -1,6 +1,4 @@
-/** 
- * Copyright (c) Krapht, 2011
- * 
+/*
  * "LogisticsPipes" is distributed under the terms of the Minecraft Mod Public 
  * License 1.0, or MMPL. Please check the contents of the license located in
  * http://www.mod-buildcraft.com/MMPL-1.0.txt
@@ -12,31 +10,33 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.Delayed;
-import java.util.concurrent.TimeUnit;
 
 import logisticspipes.interfaces.routing.IRelayItem;
+import logisticspipes.interfaces.routing.IRequireReliableFluidTransport;
 import logisticspipes.interfaces.routing.IRequireReliableTransport;
-import logisticspipes.items.LogisticsLiquidContainer;
+import logisticspipes.items.LogisticsFluidContainer;
 import logisticspipes.logisticspipes.IRoutedItem;
 import logisticspipes.pipes.PipeLogisticsChassi;
 import logisticspipes.pipes.basic.CoreRoutedPipe.ItemSendMode;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.utils.ItemIdentifierStack;
+import logisticspipes.utils.FluidIdentifier;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTBase;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.world.World;
 import net.minecraftforge.common.ForgeDirection;
+import net.minecraftforge.fluids.FluidStack;
 import buildcraft.BuildCraftCore;
 import buildcraft.api.core.Position;
-import buildcraft.api.transport.IPipedItem;
-import buildcraft.core.EntityPassiveItem;
+import buildcraft.transport.TravelingItem;
 import buildcraft.core.proxy.CoreProxy;
 import buildcraft.transport.PipeTransportItems;
 import buildcraft.transport.TileGenericPipe;
 
-public class RoutedEntityItem extends EntityPassiveItem implements IRoutedItem{
+public class RoutedEntityItem extends TravelingItem implements IRoutedItem {
 
 	int destinationint = -1;
 	UUID destinationUUID;
@@ -54,65 +54,77 @@ public class RoutedEntityItem extends EntityPassiveItem implements IRoutedItem{
 	
 	List<Integer> jamlist = new ArrayList<Integer>();
 	
-	public RoutedEntityItem(World world, IPipedItem entityItem) {
-		super(world, entityItem.getEntityId());
+	public RoutedEntityItem(TravelingItem entityItem) {
+		super(entityItem.id);
 		thisItem = ItemIdentifierStack.GetFromStack(entityItem.getItemStack());
 		container = entityItem.getContainer();
-		position = entityItem.getPosition();
 		speed = entityItem.getSpeed();
 		item = entityItem.getItemStack();
-		delay = 62*20; //64-2 ticks (assume destination consumes items at 1/tick) *20ms ; that way another stack gets sent 64 ticks after the first.
-		if(entityItem.getContribution("routingInformation") == null) {
-			this.addContribution("routingInformation", new RoutedEntityItemSaveHandler(this));
+		if(container != null && container.worldObj != null) {
+			delay = 10*20 + container.worldObj.getTotalWorldTime(); //10 seconds, it should be delivered by then
 		} else {
-			RoutedEntityItemSaveHandler settings = (RoutedEntityItemSaveHandler) entityItem.getContribution("routingInformation");
+			delay = 62; //64-2 ticks (assume destination consumes items at 1/tick) *20ms ; that way another stack gets sent 64 ticks after the first.
+		}
+		
+		RoutedEntityItemSaveHandler handler = new RoutedEntityItemSaveHandler(this);
+		NBTTagCompound extraData = entityItem.getExtraData();
+		if(!extraData.hasKey("routingInformation")) {
+			NBTTagCompound newTags = extraData.getCompoundTag("routingInformation");
+			handler.writeToNBT(newTags);
+		} else {
+			NBTTagCompound tags = extraData.getCompoundTag("routingInformation");
+			handler.readFromNBT(tags);
 
 			/* clear destination on load for activerouted items
 			 * we'll have to keep this until active requesters are smarter about remebering things over unload/reload
 			 */
-			if(settings.transportMode != TransportMode.Active) {
-				this.destinationUUID=settings.destinationUUID;
+			if(handler.transportMode != TransportMode.Active) {
+				this.destinationUUID=handler.destinationUUID;
 				this.checkIDFromUUID();
 			}
 
-			bufferCounter = settings.bufferCounter;
-			arrived = settings.arrived;
-			_transportMode = settings.transportMode;
-			this.addContribution("routingInformation", new RoutedEntityItemSaveHandler(this));
+			bufferCounter = handler.bufferCounter;
+			arrived = handler.arrived;
+			_transportMode = handler.transportMode;
+			handler.writeToNBT(tags);
 		}
 	}
 	
 	@Override
 	public EntityItem toEntityItem(ForgeDirection dir) {
+		World worldObj = container.getWorldObj();
 		if (!CoreProxy.proxy.isRenderWorld(worldObj)) {
 			if (getItemStack().stackSize <= 0) {
 				return null;
 			}
 
-			if(getItemStack().getItem() instanceof LogisticsLiquidContainer) {
+			if(getItemStack().getItem() instanceof LogisticsFluidContainer) {
 				remove();
 				return null;
 			}
 
-			//detect items spawning in the center of pipes and move them to the exit side
-			if(position.x == container.xCoord + 0.5 && position.y == container.yCoord + 0.25 && position.z == container.zCoord + 0.5) {
-				position.orientation = dir;
-				//N, W and down need to move a tiny bit beyond the block end because vanilla uses floor(coord) to determine block x/y/z
-				if(dir == ForgeDirection.DOWN) {
-					position.moveForwards(0.251);
-				} else  if(dir == ForgeDirection.UP) {
-					position.moveForwards(0.75);
-				} else if(dir == ForgeDirection.NORTH || dir == ForgeDirection.WEST) {
-					position.moveForwards(0.501);
-				} else {
-					position.moveForwards(0.5);
+			//FIXME: is this still needed?
+/*			if(container != null) {
+				//detect items spawning in the center of pipes and move them to the exit side
+				if(xCoord == container.xCoord + 0.5 && yCoord == container.yCoord + 0.25 && zCoord == container.zCoord + 0.5) {
+					position.orientation = dir;
+					//N, W and down need to move a tiny bit beyond the block end because vanilla uses floor(coord) to determine block x/y/z
+					if(dir == ForgeDirection.DOWN) {
+						position.moveForwards(0.251);
+					} else  if(dir == ForgeDirection.UP) {
+						position.moveForwards(0.75);
+					} else if(dir == ForgeDirection.NORTH || dir == ForgeDirection.WEST) {
+						position.moveForwards(0.501);
+					} else {
+						position.moveForwards(0.5);
+					}
 				}
-			}
+			}*/
 
 			Position motion = new Position(0, 0, 0, dir);
 			motion.moveForwards(0.1 + getSpeed() * 2F);
 
-			EntityItem entityitem = new EntityItem(worldObj, position.x, position.y, position.z, getItemStack());
+			EntityItem entityitem = new EntityItem(worldObj, xCoord, yCoord, zCoord, getItemStack());
 
 			entityitem.lifespan = BuildCraftCore.itemLifespan;
 			entityitem.delayBeforeCanPickup = 10;
@@ -135,8 +147,14 @@ public class RoutedEntityItem extends EntityPassiveItem implements IRoutedItem{
 		if (destinationint >= 0) {
 			if (SimpleServiceLocator.routerManager.isRouter(destinationint)){
 				IRouter destinationRouter = SimpleServiceLocator.routerManager.getRouter(destinationint); 
-				if (destinationRouter.getPipe() != null && destinationRouter.getPipe().logic instanceof IRequireReliableTransport){
-					((IRequireReliableTransport)destinationRouter.getPipe().logic).itemLost(ItemIdentifierStack.GetFromStack(item));
+				if (destinationRouter.getPipe() != null && destinationRouter.getPipe() instanceof IRequireReliableTransport){
+					((IRequireReliableTransport)destinationRouter.getPipe()).itemLost(ItemIdentifierStack.GetFromStack(item));
+				}
+				if (destinationRouter.getPipe() != null && destinationRouter.getPipe() instanceof IRequireReliableFluidTransport) {
+					if(item.getItem() instanceof LogisticsFluidContainer) {
+						FluidStack liquid = SimpleServiceLocator.logisticsFluidManager.getFluidFromContainer(item);
+						((IRequireReliableFluidTransport)destinationRouter.getPipe()).liquidLost(FluidIdentifier.get(liquid), liquid.amount);
+					}
 				}
 			}
 			jamlist.add(destinationint);
@@ -152,14 +170,20 @@ public class RoutedEntityItem extends EntityPassiveItem implements IRoutedItem{
 	
 	@Override
 	public void remove() {
-		if(MainProxy.isClient(this.worldObj)) return;
+		if(MainProxy.isClient(this.container.getWorldObj())) return;
 		if (destinationint >= 0 && SimpleServiceLocator.routerManager.isRouter(destinationint)){
 			IRouter destinationRouter = SimpleServiceLocator.routerManager.getRouter(destinationint); 
-			if (!arrived && destinationRouter.getPipe() != null && destinationRouter.getPipe().logic instanceof IRequireReliableTransport){
-				((IRequireReliableTransport)destinationRouter.getPipe().logic).itemLost(ItemIdentifierStack.GetFromStack(item));
+			if (!arrived && destinationRouter.getPipe() != null && destinationRouter.getPipe() instanceof IRequireReliableTransport){
+				((IRequireReliableTransport)destinationRouter.getPipe()).itemLost(ItemIdentifierStack.GetFromStack(item));
+			}
+			if (!arrived && destinationRouter.getPipe() != null && destinationRouter.getPipe() instanceof IRequireReliableFluidTransport) {
+				if(item.getItem() instanceof LogisticsFluidContainer) {
+					FluidStack liquid = SimpleServiceLocator.logisticsFluidManager.getFluidFromContainer(item);
+					((IRequireReliableFluidTransport)destinationRouter.getPipe()).liquidLost(FluidIdentifier.get(liquid), liquid.amount);
+				}
 			}
 		}
-		super.remove();
+		remove();
 	}
 
 	@Override
@@ -208,7 +232,7 @@ public class RoutedEntityItem extends EntityPassiveItem implements IRoutedItem{
 	}
 
 	@Override
-	public EntityPassiveItem getEntityPassiveItem() {
+	public TravelingItem getTravelingItem() {
 		return this;
 	}
 
@@ -224,19 +248,19 @@ public class RoutedEntityItem extends EntityPassiveItem implements IRoutedItem{
 	}
 
 	@Override
-	public void split(World worldObj, int itemsToTake, ForgeDirection orientation) {
-		if(getItemStack().getItem() instanceof LogisticsLiquidContainer) {
-			throw new UnsupportedOperationException("Can't split up a LiquidContainer");
+	public void split(int itemsToTake, ForgeDirection orientation) {
+		if(getItemStack().getItem() instanceof LogisticsFluidContainer) {
+			throw new UnsupportedOperationException("Can't split up a FluidContainer");
 		}
-		EntityPassiveItem newItem = new EntityPassiveItem(worldObj);
-		newItem.setPosition(position.x, position.y, position.z);
+		TravelingItem newItem = new TravelingItem();
+		newItem.setPosition(xCoord, yCoord, zCoord);
 		newItem.setSpeed(this.speed);
 		newItem.setItemStack(this.item.splitStack(this.item.stackSize - itemsToTake));
 		
 		if (this.container instanceof TileGenericPipe && ((TileGenericPipe)this.container).pipe.transport instanceof PipeTransportItems){
 			if (((TileGenericPipe)this.container).pipe instanceof PipeLogisticsChassi){
 				PipeLogisticsChassi chassi = (PipeLogisticsChassi) ((TileGenericPipe)this.container).pipe;
-				chassi.queueRoutedItem(SimpleServiceLocator.buildCraftProxy.CreateRoutedItem(worldObj, newItem), orientation, ItemSendMode.Fast);
+				chassi.queueRoutedItem(SimpleServiceLocator.buildCraftProxy.CreateRoutedItem(newItem), orientation, ItemSendMode.Fast);
 			} else {
 				//this should never happen
 				newItem.toEntityItem(orientation);
@@ -246,7 +270,9 @@ public class RoutedEntityItem extends EntityPassiveItem implements IRoutedItem{
 
 	@Override
 	public void SetPosition(double x, double y, double z) {
-		this.position = new Position(x,y,z);
+		this.xCoord=x;
+		this.yCoord=y;
+		this.zCoord=z;
 	}
 
 	@Override
@@ -261,16 +287,17 @@ public class RoutedEntityItem extends EntityPassiveItem implements IRoutedItem{
 	}
 
 	@Override
-	public EntityPassiveItem getNewEntityPassiveItem() {
-		if(getItemStack().getItem() instanceof LogisticsLiquidContainer) {
-			throw new UnsupportedOperationException("Can't change LiquidContainer to EntityPassiveItem");
+	public TravelingItem getNewTravelingItem() {
+		if(getItemStack().getItem() instanceof LogisticsFluidContainer) {
+			throw new UnsupportedOperationException("Can't change FluidContainer to TravelingItem");
 		}
-		EntityPassiveItem Entityitem = new EntityPassiveItem(worldObj, entityId);
-		Entityitem.setContainer(container);
-		Entityitem.setPosition(position.x, position.y, position.z);
-		Entityitem.setSpeed(speed);
-		Entityitem.setItemStack(item);
-		return Entityitem;
+		TravelingItem newItem = new TravelingItem();
+		newItem.setItemStack(getItemStack());
+		newItem.setContainer(container);
+		newItem.setPosition(xCoord, yCoord, zCoord);
+		newItem.setSpeed(speed);
+		newItem.setItemStack(item);
+		return newItem;
 	}
 
 	@Override
@@ -295,12 +322,12 @@ public class RoutedEntityItem extends EntityPassiveItem implements IRoutedItem{
 
 	@Override
 	public IRoutedItem getCopy() {
-		EntityPassiveItem Entityitem = new EntityPassiveItem(worldObj, entityId);
+		TravelingItem Entityitem = new TravelingItem();
 		Entityitem.setContainer(container);
-		Entityitem.setPosition(position.x, position.y, position.z);
+		Entityitem.setPosition(xCoord, yCoord, zCoord);
 		Entityitem.setSpeed(speed);
 		Entityitem.setItemStack(item.copy());
-		RoutedEntityItem routed = new RoutedEntityItem(worldObj, Entityitem);
+		RoutedEntityItem routed = new RoutedEntityItem(Entityitem);
 		routed.destinationint = destinationint;
 		routed._doNotBuffer = _doNotBuffer;
 		routed.bufferCounter = bufferCounter;
@@ -363,28 +390,18 @@ public class RoutedEntityItem extends EntityPassiveItem implements IRoutedItem{
 	}
 
 	// Delayed
-    private final long origin = System.currentTimeMillis();
     private final long delay;
 
-    @Override
-    public long getDelay( TimeUnit unit ) {
-        return unit.convert( delay - ( System.currentTimeMillis() - origin ),
-                TimeUnit.MILLISECONDS );
-    }
- 
-    @Override
-    public int compareTo( Delayed delayed ) {
-        if( delayed == this ) {
-            return 0;
-        }
- 
-        if( delayed instanceof RoutedEntityItem ) {
-            long diff = delay - ( ( RoutedEntityItem )delayed ).delay;
-            return ( ( diff == 0 ) ? 0 : ( ( diff < 0 ) ? -1 : 1 ) );
-        }
- 
-        long d = ( getDelay( TimeUnit.MILLISECONDS ) - delayed.getDelay( TimeUnit.MILLISECONDS ) );
-        return ( ( d == 0 ) ? 0 : ( ( d < 0 ) ? -1 : 1 ) );
-    }
+	@Override
+	public long getTimeOut() {
+		return delay;
+	}
+
+	@Override
+	public long getTickToTimeOut() {
+		if(this.container == null || this.container.worldObj == null)
+			return 0; 
+		return delay-this.container.worldObj.getTotalWorldTime();
+	}
 
 }

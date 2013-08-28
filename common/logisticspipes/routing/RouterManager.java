@@ -11,6 +11,7 @@ package logisticspipes.routing;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -19,9 +20,13 @@ import java.util.WeakHashMap;
 import logisticspipes.blocks.LogisticsSecurityTileEntity;
 import logisticspipes.interfaces.ISecurityStationManager;
 import logisticspipes.interfaces.routing.IDirectConnectionManager;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.block.SecurityStationAuthorizedList;
 import logisticspipes.pipes.basic.CoreRoutedPipe;
 import logisticspipes.proxy.MainProxy;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraftforge.common.ForgeDirection;
+import cpw.mods.fml.common.network.Player;
 
 
 public class RouterManager implements IRouterManager, IDirectConnectionManager, ISecurityStationManager {
@@ -31,13 +36,14 @@ public class RouterManager implements IRouterManager, IDirectConnectionManager, 
 	private final Map<UUID,Integer> _uuidMap= new HashMap<UUID,Integer>();
 	
 	private final WeakHashMap<LogisticsSecurityTileEntity, Void> _security= new WeakHashMap<LogisticsSecurityTileEntity, Void>();
+	private List<String> _authorized = new LinkedList<String>();
 	
 	private final ArrayList<DirectConnection> connectedPipes = new ArrayList<DirectConnection>();
 
 	@Override
 	public IRouter getRouter(int id){
 		//TODO: isClient without a world is expensive
-		if(MainProxy.isClient() || id<=0) {
+		if(id<=0 || MainProxy.isClient()) {
 			return null;
 		} else {
 			return _routersServer.get(id);
@@ -109,7 +115,7 @@ public class RouterManager implements IRouterManager, IDirectConnectionManager, 
 	}
 
 	@Override
-	public IRouter getOrCreateFirewallRouter(UUID UUid, int dimension, int xCoord, int yCoord, int zCoord, ForgeDirection dir) {
+	public IRouter getOrCreateFirewallRouter(UUID UUid, int dimension, int xCoord, int yCoord, int zCoord, ForgeDirection dir, IRouter[] otherRouters) {
 		IRouter r = null;
 		int id=this.getIDforUUID(UUid);
 		if(id>0)
@@ -122,7 +128,7 @@ public class RouterManager implements IRouterManager, IDirectConnectionManager, 
 				}
 			} else {
 				synchronized (_routersServer) {
-					r = new FilteringRouter(UUid, dimension, xCoord, yCoord, zCoord, dir);
+					r = new FilteringRouter(UUid, dimension, xCoord, yCoord, zCoord, dir, otherRouters);
 					int rId= r.getSimpleID();
 					if(_routersServer.size()>rId)
 						_routersServer.set(rId, r);
@@ -272,6 +278,7 @@ public class RouterManager implements IRouterManager, IDirectConnectionManager, 
 	@Override
 	public void add(LogisticsSecurityTileEntity tile) {
 		_security.put(tile, null);
+		authorizeUUID(tile.getSecId());
 	}
 	
 	@Override
@@ -288,6 +295,7 @@ public class RouterManager implements IRouterManager, IDirectConnectionManager, 
 	@Override
 	public void remove(LogisticsSecurityTileEntity tile) {
 		_security.remove(tile);
+		deauthorizeUUID(tile.getSecId());
 	}
 
 	@Override
@@ -298,6 +306,60 @@ public class RouterManager implements IRouterManager, IDirectConnectionManager, 
 					r.clearPipeCache();
 					r.clearInterests();
 				}
+			}
+		}
+	}
+	
+	@Override
+	public void deauthorizeUUID(UUID id) {
+		if (_authorized.contains(id.toString())) {
+			_authorized.remove(id.toString());
+		}
+		sendClientAuthorizationList();
+	}
+	
+	@Override
+	public void authorizeUUID(UUID id) {
+		if (!_authorized.contains(id.toString())) {
+			_authorized.add(id.toString());
+		}
+		sendClientAuthorizationList();
+	}
+	
+	@Override
+	public boolean isAuthorized(UUID id) {
+		if (_authorized.isEmpty() || id == null) return false;
+		return _authorized.contains(id.toString());
+	}
+	
+	@Override
+	public boolean isAuthorized(String id) {
+		if (_authorized.isEmpty() || id == null) return false;
+		return _authorized.contains(id);
+	}
+	
+	@Override
+	public void setClientAuthorizationList(List<String> list) {
+		this._authorized = list;
+	}
+	
+	@Override
+	public void sendClientAuthorizationList() {
+//TODO 	MainProxy.sendToAllPlayers(new PacketStringList(NetworkConstants.SECURITY_AUTHORIZEDLIST_UPDATE, this._authorized).getPacket());		
+		MainProxy.sendToAllPlayers(PacketHandler.getPacket(SecurityStationAuthorizedList.class).setStringList(this._authorized));
+	}
+	
+	@Override
+	public void sendClientAuthorizationList(EntityPlayer player) {
+//TODO 	MainProxy.sendCompressedPacketToPlayer(new PacketStringList(NetworkConstants.SECURITY_AUTHORIZEDLIST_UPDATE, this._authorized).getPacket(), (Player)player);		
+		MainProxy.sendPacketToPlayer(PacketHandler.getPacket(SecurityStationAuthorizedList.class).setStringList(this._authorized), (Player)player);
+	}
+
+	@Override
+	public void printAllRouters() {
+		for(IRouter router:_routersServer) {
+			if(router != null) {
+				System.out.println(router.toString());
 			}
 		}
 	}

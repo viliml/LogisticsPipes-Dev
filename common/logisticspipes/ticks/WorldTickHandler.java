@@ -5,9 +5,10 @@ import java.util.EnumSet;
 import java.util.LinkedList;
 import java.util.List;
 
-import logisticspipes.proxy.buildcraft.BuildCraftProxy;
+import logisticspipes.LogisticsPipes;
+import logisticspipes.pipes.basic.LogisticsTileGenericPipe;
 import logisticspipes.utils.ItemIdentifier;
-import logisticspipes.utils.LiquidIdentifier;
+import logisticspipes.utils.FluidIdentifier;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.world.World;
 import net.minecraftforge.common.ForgeDirection;
@@ -15,7 +16,7 @@ import buildcraft.BuildCraftTransport;
 import buildcraft.api.core.Position;
 import buildcraft.core.ITileBufferHolder;
 import buildcraft.core.TileBuffer;
-import buildcraft.transport.EntityData;
+import buildcraft.transport.TravelingItem;
 import buildcraft.transport.PipeTransportItems;
 import buildcraft.transport.TileGenericPipe;
 import cpw.mods.fml.common.ITickHandler;
@@ -43,7 +44,7 @@ public class WorldTickHandler implements ITickHandler {
 			System.out.println("not client, not server ... what is " + type);
 			return;
 		}
-		if(entitiesToLoad == null || delayedEntitiesToLoad == null) {
+/*		if(entitiesToLoad == null || delayedEntitiesToLoad == null) {
 			try {
 				entitiesToLoad = PipeTransportItems.class.getDeclaredField("entitiesToLoad");
 				entitiesToLoad.setAccessible(true);
@@ -56,9 +57,9 @@ public class WorldTickHandler implements ITickHandler {
 			} catch (SecurityException e) {
 				e.printStackTrace();
 			}
-		}
+		}*/
 		while(localList.size() > 0) {
-			try {
+			//try {
 				TileGenericPipe tile = localList.get(0);
 				int x = tile.xCoord;
 				int y = tile.yCoord;
@@ -72,7 +73,7 @@ public class WorldTickHandler implements ITickHandler {
 					continue;
 				}
 
-				TileGenericPipe newTile = BuildCraftProxy.logisticsTileGenericPipe.newInstance();
+				TileGenericPipe newTile = new LogisticsTileGenericPipe();
 				for(Field field:tile.getClass().getDeclaredFields()) {
 					try {
 						field.setAccessible(true);
@@ -88,26 +89,19 @@ public class WorldTickHandler implements ITickHandler {
 				if(newTile.pipe != null) {
 					newTile.pipe.setTile(newTile);
 					if(newTile.pipe.transport instanceof PipeTransportItems) {
-						for(EntityData entity:((PipeTransportItems)newTile.pipe.transport).travelingEntities.values()) {
-							entity.item.setContainer(newTile);
+						for(TravelingItem entity:((PipeTransportItems)newTile.pipe.transport).items) {
+							entity.setContainer(newTile);
 						}
-						for(EntityData entity:((List<EntityData>)entitiesToLoad.get(newTile.pipe.transport))) {
-							entity.item.setContainer(newTile);
+/*						for(TravelingItem entity:((List<TravelingItem>)entitiesToLoad.get(newTile.pipe.transport))) {
+							entity.setContainer(newTile);
 						}
-						for(EntityData entity:((List<EntityData>)delayedEntitiesToLoad.get(newTile.pipe.transport))) {
-							entity.item.setContainer(newTile);
-						}
+						for(TravelingItem entity:((List<TravelingItem>)delayedEntitiesToLoad.get(newTile.pipe.transport))) {
+							entity.setContainer(newTile);
+						}*/
 					}
 				}
-				
-				for (ForgeDirection o : ForgeDirection.VALID_DIRECTIONS) {
-					Position pos = new Position(newTile.xCoord, newTile.yCoord, newTile.zCoord, o);
-					pos.moveForwards(1.0);
 
-					newTile.tileBuffer[o.ordinal()] = new TileBuffer();
-					newTile.tileBuffer[o.ordinal()].initialize(newTile.worldObj, (int) pos.x, (int) pos.y, (int) pos.z);
-				}
-
+				//getTile creates the TileCache as needed.
 				for (ForgeDirection o : ForgeDirection.VALID_DIRECTIONS) {
 					TileEntity tileSide = newTile.getTile(o);
 
@@ -116,17 +110,22 @@ public class WorldTickHandler implements ITickHandler {
 					}
 				}
 				//newTile.scheduleNeighborChange();
-			} catch (InstantiationException e) {
+			/*} catch (IllegalAccessException e) {
 				e.printStackTrace();
-			} catch (IllegalAccessException e) {
-				e.printStackTrace();
-			}
+			}*/
 			localList.remove(0);
 		}
 		ItemIdentifier.tick();
-		LiquidIdentifier.initFromForge(true);
+		FluidIdentifier.initFromForge(true);
 		if(type.contains(TickType.SERVER)) {
 			HudUpdateTick.tick();
+			if(LogisticsPipes.WATCHDOG) {
+				Watchdog.tickServer();
+			}
+		} else {
+			if(LogisticsPipes.WATCHDOG) {
+				Watchdog.tickClient();
+			}
 		}
 	}
 

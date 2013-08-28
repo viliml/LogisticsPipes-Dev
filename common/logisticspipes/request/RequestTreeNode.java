@@ -3,10 +3,12 @@ package logisticspipes.request;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.SortedSet;
 import java.util.TreeSet;
@@ -17,8 +19,10 @@ import logisticspipes.interfaces.routing.IFilteringRouter;
 import logisticspipes.interfaces.routing.IProvideItems;
 import logisticspipes.interfaces.routing.IRelayItem;
 import logisticspipes.interfaces.routing.IRequestItems;
+import logisticspipes.interfaces.routing.IRequestFluid;
 import logisticspipes.pipes.basic.CoreRoutedPipe;
 import logisticspipes.proxy.SimpleServiceLocator;
+import logisticspipes.request.RequestTree.ActiveRequestType;
 import logisticspipes.request.RequestTree.workWeightedSorter;
 import logisticspipes.routing.ExitRoute;
 import logisticspipes.routing.IRouter;
@@ -28,18 +32,20 @@ import logisticspipes.routing.PipeRoutingConnectionType;
 import logisticspipes.routing.ServerRouter;
 import logisticspipes.utils.ItemIdentifier;
 import logisticspipes.utils.ItemIdentifierStack;
-import logisticspipes.utils.ItemMessage;
+import logisticspipes.utils.FluidIdentifier;
 import logisticspipes.utils.Pair;
+import logisticspipes.utils.Pair3;
 
 public class RequestTreeNode {
 
-	protected RequestTreeNode(ItemIdentifierStack item, IRequestItems requester, RequestTreeNode parentNode) {
-		this(null,item,requester,parentNode);
+	protected RequestTreeNode(ItemIdentifierStack item, IRequestItems requester, RequestTreeNode parentNode, EnumSet<ActiveRequestType> requestFlags) {
+		this(null,item,requester,parentNode,requestFlags);
 	}
-	private RequestTreeNode(CraftingTemplate template, ItemIdentifierStack item, IRequestItems requester, RequestTreeNode parentNode) {
+	private RequestTreeNode(CraftingTemplate template, ItemIdentifierStack item, IRequestItems requester, RequestTreeNode parentNode, EnumSet<ActiveRequestType> requestFlags) {
 		this.request = item;
 		this.target = requester;
 		this.parentNode=parentNode;
+//		this.requestFlags=requestFlags;
 		if(parentNode!=null) {
 			parentNode.subRequests.add(this);
 			this.root = parentNode.root;
@@ -50,25 +56,31 @@ public class RequestTreeNode {
 			this.declareCrafterUsed(template);
 		}
 		
-		if(checkProvider()){
+		if(requestFlags.contains(ActiveRequestType.Provide) && checkProvider()){
 			return;
 		}
-		
-		if(checkExtras()) {
-			return;
+
+		if(requestFlags.contains(ActiveRequestType.Craft) && checkExtras()) {
+			return;// crafting was able to complete
 		}
-		checkCrafting();
 		
+		if(requestFlags.contains(ActiveRequestType.Craft) && checkCrafting()) {
+			return;// crafting was able to complete
+		}
+		
+		// crafting is not done!
 	}
 
-	
+//	private final EnumSet<ActiveRequestType> requestFlags;
 	private final IRequestItems target;
 	private final ItemIdentifierStack request;
 	private final RequestTreeNode parentNode;
 	protected final RequestTree root;
 	private List<RequestTreeNode> subRequests = new ArrayList<RequestTreeNode>();
+	List<FluidRequestTreeNode> liquidSubRequests = new ArrayList<FluidRequestTreeNode>();
 	private List<LogisticsPromise> promises = new ArrayList<LogisticsPromise>();
 	private List<LogisticsExtraPromise> extrapromises = new ArrayList<LogisticsExtraPromise>();
+	private List<LogisticsExtraPromise> byproducts = new ArrayList<LogisticsExtraPromise>();
 	private SortedSet<CraftingTemplate> usedCrafters= new TreeSet<CraftingTemplate>();
 	private CraftingTemplate lastCrafterTried = null;
 	
@@ -135,15 +147,13 @@ public class RequestTreeNode {
 		return request.getItem();
 	}
 
-	private void remove(List<RequestTreeNode> subNodes) {
-		subRequests.removeAll(subNodes);
-		for(RequestTreeNode subnode:subNodes) {
-			subnode.removeSubPromisses();
-		}
-	}
-	
 	protected void remove(RequestTreeNode subNode) {
 		subRequests.remove(subNode);
+		subNode.removeSubPromisses();
+	}
+	
+	protected void remove(FluidRequestTreeNode subNode) {
+		liquidSubRequests.remove(subNode);
 		subNode.removeSubPromisses();
 	}
 
@@ -211,20 +221,34 @@ public class RequestTreeNode {
 				((ICraftItems)promise.sender).registerExtras(promise);
 			}
 		}
+		for(LogisticsPromise promise:byproducts) {
+			if(promise.sender instanceof ICraftItems) {
+				((ICraftItems)promise.sender).registerExtras(promise);
+			}
+		}
+		for(FluidRequestTreeNode subNode:liquidSubRequests) {
+			subNode.fullFill();
+		}
 	}
 
-	protected void sendMissingMessage(LinkedList<ItemMessage> missing) {
+	protected void buildMissingMap(Map<ItemIdentifier,Integer> missing) {
 		if(getMissingItemCount() != 0) {
-			ItemIdentifierStack stack = request.clone();
-			stack.stackSize = getMissingItemCount();
-			missing.add(new ItemMessage(stack));
+			ItemIdentifier item = request.getItem();
+			Integer count = missing.get(item);
+			if(count == null)
+				count = 0;
+			count += getMissingItemCount();
+			missing.put(item, count);
 		}
 		for(RequestTreeNode subNode:subRequests) {
-			subNode.sendMissingMessage(missing);
+			subNode.buildMissingMap(missing);
+		}
+		for(FluidRequestTreeNode subNode:liquidSubRequests) {
+			subNode.buildMissingMap(missing);
 		}
 	}
 
-	protected void sendUsedMessage(LinkedList<ItemMessage> used, LinkedList<ItemMessage> missing) {
+	protected void buildUsedMap(Map<ItemIdentifier,Integer> used, Map<ItemIdentifier,Integer> missing) {
 		int usedcount = 0;
 		for(LogisticsPromise promise:promises) {
 			if(promise.sender instanceof IProvideItems && !(promise.sender instanceof ICraftItems)) {
@@ -232,17 +256,26 @@ public class RequestTreeNode {
 			}
 		}
 		if(usedcount != 0) {
-			ItemIdentifierStack stack = request.clone();
-			stack.stackSize = usedcount;
-			used.add(new ItemMessage(stack));
+			ItemIdentifier item = request.getItem();
+			Integer count = used.get(item);
+			if(count == null)
+				count = 0;
+			count += usedcount;
+			used.put(item, count);
 		}
 		if(getMissingItemCount() != 0) {
-			ItemIdentifierStack stack = request.clone();
-			stack.stackSize = getMissingItemCount();
-			missing.add(new ItemMessage(stack));
+			ItemIdentifier item = request.getItem();
+			Integer count = missing.get(item);
+			if(count == null)
+				count = 0;
+			count += getMissingItemCount();
+			missing.put(item, count);
 		}
 		for(RequestTreeNode subNode:subRequests) {
-			subNode.sendUsedMessage(used, missing);
+			subNode.buildUsedMap(used, missing);
+		}
+		for(FluidRequestTreeNode subNode:liquidSubRequests) {
+			subNode.buildUsedMap(used, missing);
 		}
 	}
 	
@@ -267,11 +300,11 @@ public class RequestTreeNode {
 		List<ExitRoute> validSources = new ArrayList<ExitRoute>(); // get the routing table 
 		for (int i = routersIndex.nextSetBit(0); i >= 0; i = routersIndex.nextSetBit(i+1)) {
 			IRouter r = SimpleServiceLocator.routerManager.getRouterUnsafe(i,false);
-	
+
+			if(!r.isValidCache()) continue; //Skip Routers without a valid pipe
+
 			ExitRoute e = destination.getDistanceTo(r);
-			//ExitRoute e = r.getDistanceTo(requester.getRouter());
-			if (e!=null)
-				validSources.add(e);
+			if (e!=null) validSources.add(e);
 		}
 		// closer providers are good
 		Collections.sort(validSources, new workWeightedSorter(1.0));
@@ -297,9 +330,10 @@ public class RequestTreeNode {
 		for(ExitRoute r:firewalls) {
 			IFilter filter = ((IFilteringRouter)r.destination).getFilter();
 			filters.add(filter);
-			List<Pair<IProvideItems,List<IFilter>>> list = getProviders(r.destination,item, used, filters);
+			for(ExitRoute router:((IFilteringRouter)r.destination).getRouters()) {
+				providers.addAll(getProviders(router.destination, item, used, filters));
+			}
 			filters.remove(filter);
-			providers.addAll(list);
 		}
 		return providers;
 	}
@@ -314,7 +348,7 @@ public class RequestTreeNode {
 				continue;
 			boolean valid = false;
 			ExitRoute source = extraPromise.sender.getRouter().getRouteTable().get(this.target.getRouter().getSimpleID());
-			if(source != null && !source.containsFlag(PipeRoutingConnectionType.canRouteTo)) {
+			if(source != null && source.containsFlag(PipeRoutingConnectionType.canRouteTo)) {
 				for(ExitRoute node:this.target.getRouter().getIRoutersByCost()) {
 					if(node.destination == extraPromise.sender.getRouter()) {
 						if(node.containsFlag(PipeRoutingConnectionType.canRequestFrom)) {
@@ -339,10 +373,10 @@ public class RequestTreeNode {
 		for (int i = routersIndex.nextSetBit(0); i >= 0; i = routersIndex.nextSetBit(i+1)) {
 			IRouter r = SimpleServiceLocator.routerManager.getRouterUnsafe(i,false);
 
+			if(!r.isValidCache()) continue; //Skip Routers without a valid pipe
+
 			ExitRoute e = this.target.getRouter().getDistanceTo(r);
-			//ExitRoute e = r.getDistanceTo(requester.getRouter());
-			if (e!=null)
-				validSources.add(e);
+			if (e!=null) validSources.add(e);
 		}
 		workWeightedSorter wSorter = new workWeightedSorter(0); // distance doesn't matter, because ingredients have to be delivered to the crafter, and we can't tell how long that will take.
 		Collections.sort(validSources, wSorter);
@@ -367,8 +401,8 @@ outer:
 				if(lastCrafter == null){
 					lastCrafter = iterAllCrafters.next();
 				}
-			}else {
-				done=true;				
+			} else if(lastCrafter == null) {
+				done=true;
 			}
 			
 			int itemsNeeded = this.getMissingItemCount();
@@ -390,7 +424,7 @@ outer:
 					craftersSamePriority.add(cn);
 				continue;
 			}
-			if(craftersToBalance==null && (craftersSamePriority == null || craftersSamePriority.isEmpty())) {
+			if(craftersToBalance.isEmpty() && (craftersSamePriority == null || craftersSamePriority.isEmpty())) {
 				continue; //nothing at this priority was available for crafting
 			}
 			/// end of crafter prioriy selection.
@@ -468,8 +502,6 @@ outer:
 		private final int setSize;
 		private final int maxWorkSetsAvailable;
 		private final RequestTreeNode treeNode; // current node we are calculating
-		private List<RequestTreeNode> lastNode; // proposed children.
-		private int sizeOfLastNodeRequest; // to avoid recalc'ing when we request promises for the tree we already have .
 
 		public final Pair<CraftingTemplate, List<IFilter>> crafter;
 		public final int originalToDo;
@@ -479,7 +511,6 @@ outer:
 			this.treeNode = treeNode;
 			this.originalToDo = crafter.getValue1().getCrafter().getTodo();
 			this.stacksOfWorkRequested = 0;
-			this.sizeOfLastNodeRequest = 0;
 			this.setSize = crafter.getValue1().getResultStackSize();
 			this.maxWorkSetsAvailable = ((treeNode.getMissingItemCount()) + setSize - 1) / setSize;
 		}
@@ -494,8 +525,6 @@ outer:
 			
 			if(nCraftingSetsNeeded==0) // not sure how we get here, but i've seen a stack trace later where we try to create a 0 size promise.
 				return 0;
-			// update how many things are currently hanging in the tree.
-			sizeOfLastNodeRequest = nCraftingSetsNeeded;  
 			
 			CraftingTemplate template = crafter.getValue1();
 			int stacks= getSubRequests(nCraftingSetsNeeded, template);
@@ -553,13 +582,6 @@ outer:
 		public int currentToDo() {
 			return this.originalToDo+this.stacksOfWorkRequested*setSize;
 		}
-
-		public void clearWorkRequest() {
-			treeNode.remove(lastNode);
-			lastNode.clear();
-			stacksOfWorkRequested = 0;
-			sizeOfLastNodeRequest = 0;
-		}
 	}
 
 	private static List<Pair<CraftingTemplate,List<IFilter>>> getCrafters(ItemIdentifier itemToCraft, List<ExitRoute> validDestinations, BitSet layer, List<IFilter> filters) {
@@ -605,51 +627,95 @@ outer:
 		int workSetsAvailable = nCraftingSets;
 		ArrayList<RequestTreeNode>lastNode = new ArrayList<RequestTreeNode>(stacks.size());
 		for(Pair<ItemIdentifierStack,IRequestItems> stack:stacks) {
-			RequestTreeNode node = new RequestTreeNode(template,stack.getValue1(), stack.getValue2(), this);
+			RequestTreeNode node = new RequestTreeNode(template,stack.getValue1(), stack.getValue2(), this, RequestTree.defaultRequestFlags);
 			lastNode.add(node);
 			if(!node.isDone()) {
 				failed = true;
 			}			
 		}
+		List<Pair3<FluidIdentifier, Integer, IRequestFluid>> liquids = template.getComponentFluid(nCraftingSets);
+		ArrayList<FluidRequestTreeNode>lastFluidNode = new ArrayList<FluidRequestTreeNode>(liquids.size());
+		for(Pair3<FluidIdentifier, Integer, IRequestFluid> liquid:liquids) {
+			FluidRequestTreeNode node = new FluidRequestTreeNode(liquid.getValue1(), liquid.getValue2(), liquid.getValue3(), this);
+			lastFluidNode.add(node);
+			if(!node.isDone()) {
+				failed = true;
+			}
+		}
 		if(failed) {
 			for (RequestTreeNode n:lastNode) {
+				n.destroy(); // drop the failed requests.
+			}
+			for (FluidRequestTreeNode n:lastFluidNode) {
 				n.destroy(); // drop the failed requests.
 			}
 			//save last tried template for filling out the tree
 			this.lastCrafterTried = template;
 			//figure out how many we can actually get
 			for(int i = 0; i < stacks.size(); i++) {
-				workSetsAvailable = Math.min(workSetsAvailable, lastNode.get(i).getPromiseItemCount() /stacks.get(i).getValue1().stackSize/nCraftingSets);
+				workSetsAvailable = Math.min(workSetsAvailable, lastNode.get(i).getPromiseItemCount() / (stacks.get(i).getValue1().stackSize / nCraftingSets));
 			}
+			
+			for(int i = 0; i < liquids.size(); i++) {
+				workSetsAvailable = Math.min(workSetsAvailable, lastFluidNode.get(i).getPromiseFluidAmount() / (liquids.get(i).getValue2() / nCraftingSets));
+			}
+			
 			return generateRequestTreeFor(workSetsAvailable, template);
+		}
+		for(ItemIdentifierStack stack:template.getByproduct()) {
+			LogisticsExtraPromise extra = new LogisticsExtraPromise();
+			extra.item = stack.getItem();
+			extra.numberOfItems = stack.stackSize * workSetsAvailable;
+			extra.sender = template.getCrafter();
+			extra.provided = false;
+			byproducts.add(extra);
 		}
 		return workSetsAvailable;
 	}
-	
 
 	private int generateRequestTreeFor(int workSets, CraftingTemplate template) {
 		
 		//and try it
 		ArrayList<RequestTreeNode> newChildren = new ArrayList<RequestTreeNode>();
+		ArrayList<FluidRequestTreeNode> newFluidChildren = new ArrayList<FluidRequestTreeNode>();
 		if(workSets>0) {
 			//now set the amounts
-			
+
 			List<Pair<ItemIdentifierStack,IRequestItems>> stacks = template.getComponentItems(workSets);
 
 			boolean failed = false;
 			for(Pair<ItemIdentifierStack,IRequestItems> stack:stacks) {
-				RequestTreeNode node = new RequestTreeNode(template,stack.getValue1(), stack.getValue2(), this);
+				RequestTreeNode node = new RequestTreeNode(template,stack.getValue1(), stack.getValue2(), this, RequestTree.defaultRequestFlags);
 				newChildren.add(node);
 				if(!node.isDone()) {
 					failed = true;
 				}			
 			}
+			List<Pair3<FluidIdentifier, Integer, IRequestFluid>> liquids = template.getComponentFluid(workSets);
+			for(Pair3<FluidIdentifier, Integer, IRequestFluid> liquid:liquids) {
+				FluidRequestTreeNode node = new FluidRequestTreeNode(liquid.getValue1(), liquid.getValue2(), liquid.getValue3(), this);
+				newFluidChildren.add(node);
+				if(!node.isDone()) {
+					failed = true;
+				}
+			}
 			if(failed) {
 				for(RequestTreeNode c:newChildren) {
 					c.destroy();
 				}
+				for (FluidRequestTreeNode n:newFluidChildren) {
+					n.destroy();
+				}
 				return 0;
 			}
+		}
+		for(ItemIdentifierStack stack:template.getByproduct()) {
+			LogisticsExtraPromise extra = new LogisticsExtraPromise();
+			extra.item = stack.getItem();
+			extra.numberOfItems = stack.stackSize * workSets;
+			extra.sender = template.getCrafter();
+			extra.provided = false;
+			byproducts.add(extra);
 		}
 		return workSets;
 	}
@@ -667,7 +733,13 @@ outer:
 		List<Pair<ItemIdentifierStack, IRequestItems>> stacks = template.getComponentItems(nCraftingSetsNeeded);
 
 		for(Pair<ItemIdentifierStack,IRequestItems> stack:stacks) {
-			RequestTreeNode node = new RequestTreeNode(template, stack.getValue1(), stack.getValue2(), this);
+			new RequestTreeNode(template, stack.getValue1(), stack.getValue2(), this, RequestTree.defaultRequestFlags);
+		}
+
+		List<Pair3<FluidIdentifier, Integer, IRequestFluid>> liquids = template.getComponentFluid(nCraftingSetsNeeded);
+
+		for(Pair3<FluidIdentifier, Integer, IRequestFluid> liquid:liquids) {
+			new FluidRequestTreeNode(liquid.getValue1(), liquid.getValue2(), liquid.getValue3(), this);
 		}
 
 		this.addPromise(template.generatePromise(nCraftingSetsNeeded, new ArrayList<IRelayItem>()));
@@ -690,6 +762,6 @@ outer:
 	}
 	
 	private void destroy() {
-		root.remove(this);		
+		parentNode.remove(this);		
 	}
 }

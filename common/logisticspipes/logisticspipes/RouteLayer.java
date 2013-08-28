@@ -1,6 +1,4 @@
 /** 
- * Copyright (c) Krapht, 2012
- * 
  * "LogisticsPipes" is distributed under the terms of the Minecraft Mod Public 
  * License 1.0, or MMPL. Please check the contents of the license located in
  * http://www.mod-buildcraft.com/MMPL-1.0.txt
@@ -12,6 +10,7 @@ import logisticspipes.interfaces.routing.IFilteringRouter;
 import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.routing.ExitRoute;
 import logisticspipes.routing.IRouter;
+import logisticspipes.routing.RoutedEntityItem;
 import net.minecraftforge.common.ForgeDirection;
 
 /**
@@ -24,9 +23,9 @@ public class RouteLayer {
 	protected final IRouter _router;
 	private final TransportLayer _transport;
 	
-	public RouteLayer(IRouter router, TransportLayer transport) {
+	public RouteLayer(IRouter router, TransportLayer transportLayer) {
 		_router = router;
-		_transport = transport;
+		_transport = transportLayer;
 	}
 	
 	public ForgeDirection getOrientationForItem(IRoutedItem item, ForgeDirection blocked){
@@ -54,6 +53,7 @@ public class RouteLayer {
 			}
 		}
 		
+		item.checkIDFromUUID();
 		//If we still have no destination or client side unroutable, drop it
 		if (item.getDestination() < 0) { 
 			return ForgeDirection.UNKNOWN;
@@ -63,6 +63,7 @@ public class RouteLayer {
 		if (item.getDestinationUUID().equals(_router.getId())){
 			
 			if (!_transport.stillWantItem(item)){
+				_router.inboundItemArrived((RoutedEntityItem) item);
 				return getOrientationForItem(SimpleServiceLocator.logisticsManager.assignDestinationFor(item, _router.getSimpleID(), true), null);
 			}
 			

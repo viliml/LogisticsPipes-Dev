@@ -1,19 +1,20 @@
 package logisticspipes.gui.hud;
 
-import logisticspipes.blocks.powertile.LogisticsPowerJuntionTileEntity_BuildCraft;
+import logisticspipes.blocks.powertile.LogisticsPowerJunctionTileEntity;
 import logisticspipes.hud.HUDConfig;
 import logisticspipes.interfaces.IHeadUpDisplayRenderer;
 import logisticspipes.utils.gui.BasicGuiHelper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.util.ResourceLocation;
 
 import org.lwjgl.opengl.GL11;
 
 public class HUDPowerJunction extends BasicHUDGui implements IHeadUpDisplayRenderer {
 	
-	private final LogisticsPowerJuntionTileEntity_BuildCraft junction;
-	
-	public HUDPowerJunction(LogisticsPowerJuntionTileEntity_BuildCraft junction) {
+	private final LogisticsPowerJunctionTileEntity junction;
+	private static final ResourceLocation TEXTURE = new ResourceLocation("logisticspipes", "textures/gui/power_junction.png");
+	public HUDPowerJunction(LogisticsPowerJunctionTileEntity junction) {
 		this.junction = junction;
 	}
 	
@@ -33,7 +34,7 @@ public class HUDPowerJunction extends BasicHUDGui implements IHeadUpDisplayRende
 		GL11.glTranslatef(0.0F, 0.0F, -0.0005F);
 		super.renderHeadUpDisplay(distance, day, mc, config);
 		GL11.glTranslatef(0.0F, 0.0F, -0.0005F);
-		mc.renderEngine.bindTexture("/logisticspipes/gui/power_junction.png");
+		mc.renderEngine.func_110577_a(TEXTURE);
 		drawTexturedModalRect(-50, -30, 9, 10, 7, 61);
 		GL11.glTranslatef(0.0F, 0.0F, -0.0005F);
 		int level = 100 - junction.getChargeState();
@@ -63,7 +64,7 @@ public class HUDPowerJunction extends BasicHUDGui implements IHeadUpDisplayRende
 
 	@Override
 	public boolean cursorOnWindow(int x, int y) {
-		return -50 < x && x < 50 && -50 < y && y < 50;
+		return -60 < x && x < 60 && -40 < y && y < 40;
 	}
 
 }

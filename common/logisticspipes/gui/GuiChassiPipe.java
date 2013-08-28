@@ -9,12 +9,13 @@
 package logisticspipes.gui;
 
 import logisticspipes.interfaces.IGuiIDHandlerProvider;
-import logisticspipes.interfaces.ILogisticsGuiModule;
-import logisticspipes.interfaces.ILogisticsModule;
 import logisticspipes.items.ItemModule;
+import logisticspipes.modules.LogisticsGuiModule;
+import logisticspipes.modules.LogisticsModule;
 import logisticspipes.network.GuiIDs;
-import logisticspipes.network.NetworkConstants;
-import logisticspipes.network.packets.PacketPipeInteger;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.abstractpackets.ModernPacket;
+import logisticspipes.network.packets.chassis.ChassisGUI;
 import logisticspipes.pipes.PipeLogisticsChassi;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.utils.gui.DummyContainer;
@@ -24,7 +25,6 @@ import net.minecraft.client.gui.GuiButton;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
-
 import org.lwjgl.opengl.GL11;
 
 public class GuiChassiPipe extends KraphtBaseGuiScreen implements IGuiIDHandlerProvider {
@@ -87,7 +87,7 @@ public class GuiChassiPipe extends KraphtBaseGuiScreen implements IGuiIDHandlerP
 			if(module == null || _chassiPipe.getLogisticsModule().getSubModule(i) == null) {
 				((SmallGuiButton)buttonList.get(i)).drawButton = false;
 			} else {
-				((SmallGuiButton)buttonList.get(i)).drawButton = _chassiPipe.getLogisticsModule().getSubModule(i) instanceof ILogisticsGuiModule;
+				((SmallGuiButton)buttonList.get(i)).drawButton = _chassiPipe.getLogisticsModule().getSubModule(i) instanceof LogisticsGuiModule;
 			}
 		}
 	}
@@ -96,9 +96,15 @@ public class GuiChassiPipe extends KraphtBaseGuiScreen implements IGuiIDHandlerP
 	protected void actionPerformed(GuiButton guibutton) {
 		
 		if (guibutton.id >= 0 && guibutton.id <= 7){
-			ILogisticsModule module = _chassiPipe.getLogisticsModule().getSubModule(guibutton.id);
+			LogisticsModule module = _chassiPipe.getLogisticsModule().getSubModule(guibutton.id);
 			if (module != null){
-				MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.CHASSI_GUI_PACKET_ID,_chassiPipe.xCoord,_chassiPipe.yCoord,_chassiPipe.zCoord,guibutton.id).getPacket());
+				final ModernPacket packet = PacketHandler
+						.getPacket(ChassisGUI.class).setButtonID(guibutton.id)
+						.setPosX(_chassiPipe.getX())
+						.setPosY(_chassiPipe.getY())
+						.setPosZ(_chassiPipe.getZ());
+//TODO Must be handled manualy
+				MainProxy.sendPacketToServer(packet);
 			}
 		}
 	}
@@ -112,7 +118,7 @@ public class GuiChassiPipe extends KraphtBaseGuiScreen implements IGuiIDHandlerP
 			if(module == null || _chassiPipe.getLogisticsModule().getSubModule(i) == null) {
 				((SmallGuiButton)buttonList.get(i)).drawButton = false;
 			} else {
-				((SmallGuiButton)buttonList.get(i)).drawButton = _chassiPipe.getLogisticsModule().getSubModule(i) instanceof ILogisticsGuiModule;
+				((SmallGuiButton)buttonList.get(i)).drawButton = _chassiPipe.getLogisticsModule().getSubModule(i) instanceof LogisticsGuiModule;
 			}
 		}
 		if (_chassiPipe.getChassiSize() > 0) {
@@ -145,11 +151,12 @@ public class GuiChassiPipe extends KraphtBaseGuiScreen implements IGuiIDHandlerP
 	@Override
 	protected void drawGuiContainerBackgroundLayer(float f, int x, int y) {
 		GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-		mc.renderEngine.bindTexture("/logisticspipes/gui/chassipipe_size"+ _chassiPipe.getChassiSize() +".png");
+		mc.renderEngine.func_110577_a(_chassiPipe.getChassiGUITexture());
 		int j = guiLeft;
 		int k = guiTop;
 		drawTexturedModalRect(j, k, 0, 0, xSize, ySize);
 	}
+
 
 	@Override
 	public int getGuiID() {

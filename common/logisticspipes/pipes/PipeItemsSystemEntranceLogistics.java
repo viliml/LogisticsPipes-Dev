@@ -2,24 +2,26 @@ package logisticspipes.pipes;
 
 import java.util.UUID;
 
-import logisticspipes.interfaces.ILogisticsModule;
-import logisticspipes.logic.EntrencsLogic;
+import logisticspipes.LogisticsPipes;
+import logisticspipes.modules.LogisticsModule;
+import logisticspipes.network.GuiIDs;
 import logisticspipes.pipefxhandlers.Particles;
 import logisticspipes.pipes.basic.CoreRoutedPipe;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.textures.Textures;
 import logisticspipes.textures.Textures.TextureType;
 import logisticspipes.transport.EntrencsTransport;
+import logisticspipes.utils.SimpleInventory;
 import net.minecraft.entity.item.EntityItem;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.nbt.NBTTagCompound;
-import buildcraft.core.utils.SimpleInventory;
 
 public class PipeItemsSystemEntranceLogistics extends CoreRoutedPipe {
 	
 	public SimpleInventory inv = new SimpleInventory(1, "Freq Slot", 1);
 	
 	public PipeItemsSystemEntranceLogistics(int itemID) {
-		super(new EntrencsTransport(), new EntrencsLogic(), itemID);
+		super(new EntrencsTransport(), itemID);
 		((EntrencsTransport)this.transport).pipe = this;
 	}
 	
@@ -27,7 +29,7 @@ public class PipeItemsSystemEntranceLogistics extends CoreRoutedPipe {
 		if(inv.getStackInSlot(0) == null) return null;
 		if(!inv.getStackInSlot(0).hasTagCompound()) return null;
 		if(!inv.getStackInSlot(0).getTagCompound().hasKey("UUID")) return null;
-		MainProxy.sendSpawnParticlePacket(Particles.WhiteParticle, xCoord, yCoord, zCoord, this.worldObj, 2);
+		MainProxy.sendSpawnParticlePacket(Particles.WhiteParticle, getX(), getY(), getZ(), this.getWorld(), 2);
 		return UUID.fromString(inv.getStackInSlot(0).getTagCompound().getString("UUID"));
 	}
 	
@@ -42,7 +44,7 @@ public class PipeItemsSystemEntranceLogistics extends CoreRoutedPipe {
 	}
 
 	@Override
-	public ILogisticsModule getLogisticsModule() {
+	public LogisticsModule getLogisticsModule() {
 		return null;
 	}
 
@@ -59,15 +61,21 @@ public class PipeItemsSystemEntranceLogistics extends CoreRoutedPipe {
 	}
 
 	@Override
-	public void onBlockRemoval() {
+	public void onAllowedRemoval() {
 		dropFreqCard();
 	}
 
 	private void dropFreqCard() {
 		if(inv.getStackInSlot(0) == null) return;
-		EntityItem item = new EntityItem(worldObj,this.xCoord, this.yCoord, this.zCoord, inv.getStackInSlot(0));
-		worldObj.spawnEntityInWorld(item);
-		inv.setInventorySlotContents(0, null);
+		EntityItem item = new EntityItem(getWorld(),this.getX(), this.getY(), this.getZ(), inv.getStackInSlot(0));
+		getWorld().spawnEntityInWorld(item);
+		inv.clearInventorySlotContents(0);
 	}
-
+	
+	@Override
+	public void onWrenchClicked(EntityPlayer entityplayer) {
+		if (MainProxy.isServer(entityplayer.worldObj)) {
+			entityplayer.openGui(LogisticsPipes.instance, GuiIDs.GUI_Freq_Card_ID, getWorld(), getX(), getY(), getZ());
+		}
+	}
 }

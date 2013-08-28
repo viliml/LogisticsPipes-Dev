@@ -6,38 +6,41 @@ import java.util.List;
 
 import logisticspipes.api.IRoutedPowerProvider;
 import logisticspipes.interfaces.IClientInformationProvider;
-import logisticspipes.interfaces.ILogisticsGuiModule;
-import logisticspipes.interfaces.ILogisticsModule;
 import logisticspipes.interfaces.IModuleWatchReciver;
 import logisticspipes.interfaces.ISendRoutedItem;
 import logisticspipes.interfaces.IWorldProvider;
 import logisticspipes.logisticspipes.IInventoryProvider;
 import logisticspipes.network.GuiIDs;
-import logisticspipes.network.NetworkConstants;
-import logisticspipes.network.packets.PacketModuleNBT;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.module.ThaumicAspectsSinkList;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.utils.ItemIdentifier;
+import logisticspipes.utils.PlayerCollectionList;
 import logisticspipes.utils.SinkReply;
 import logisticspipes.utils.SinkReply.FixedPriority;
+import net.minecraft.client.renderer.texture.IconRegister;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.Icon;
 import cpw.mods.fml.common.network.Player;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 
-public class ModuleThaumicAspectSink implements ILogisticsGuiModule, IClientInformationProvider, IModuleWatchReciver {
+public class ModuleThaumicAspectSink extends LogisticsGuiModule implements IClientInformationProvider, IModuleWatchReciver {
 
 	private int slot = 0;
-	private int xCoord = 0;
-	private int yCoord = 0;
-	private int zCoord = 0;
+
+
+
 	
 	private IRoutedPowerProvider _power;
 	private IWorldProvider _world;
 	
 	public final List<Integer> aspectList = new LinkedList<Integer>();
 	
-	private final List<EntityPlayer> localModeWatchers = new ArrayList<EntityPlayer>();
+	private final PlayerCollectionList localModeWatchers = new PlayerCollectionList();
 
 	@Override
 	public void registerHandler(IInventoryProvider invProvider, ISendRoutedItem itemSender, IWorldProvider world, IRoutedPowerProvider powerProvider) {
@@ -45,17 +48,39 @@ public class ModuleThaumicAspectSink implements ILogisticsGuiModule, IClientInfo
 		_world = world;
 	}
 
-	@Override
-	public void registerPosition(int xCoord, int yCoord, int zCoord, int slot) {
-		this.xCoord = xCoord;
-		this.yCoord = yCoord;
-		this.zCoord = zCoord;
-		this.slot = slot;		
+
+	@Override 
+	public void registerSlot(int slot) {
+		this.slot = slot;
 	}
+	
+	@Override 
+	public final int getX() {
+		if(slot>=0)
+			return this._power.getX();
+		else 
+			return 0;
+	}
+	@Override 
+	public final int getY() {
+		if(slot>=0)
+			return this._power.getY();
+		else 
+			return -1;
+	}
+	
+	@Override 
+	public final int getZ() {
+		if(slot>=0)
+			return this._power.getZ();
+		else 
+			return -1-slot;
+	}
+
 	
 	private static final SinkReply _sinkReply = new SinkReply(FixedPriority.ItemSink, -2, true, false, 5, 0);
 	@Override
-	public SinkReply sinksItem(ItemIdentifier item, int bestPriority, int bestCustomPriority) {
+	public SinkReply sinksItem(ItemIdentifier item, int bestPriority, int bestCustomPriority, boolean allowDefault, boolean includeInTransit) {
 		if(bestPriority > _sinkReply.fixedPriority.ordinal() || (bestPriority == _sinkReply.fixedPriority.ordinal() && bestCustomPriority >= _sinkReply.customPriority)) return null;
 		if(isOfInterest(item)) return _sinkReply;
 		return null;
@@ -73,7 +98,7 @@ public class ModuleThaumicAspectSink implements ILogisticsGuiModule, IClientInfo
 	}
 
 	@Override
-	public ILogisticsModule getSubModule(int slot) {
+	public LogisticsModule getSubModule(int slot) {
 		return null;
 	}
 
@@ -104,7 +129,8 @@ public class ModuleThaumicAspectSink implements ILogisticsGuiModule, IClientInfo
 		localModeWatchers.add(player);
 		NBTTagCompound nbt = new NBTTagCompound();
 		writeToNBT(nbt);
-		MainProxy.sendPacketToPlayer(new PacketModuleNBT(NetworkConstants.THAUMICASPECTSINKLIST, xCoord, yCoord, zCoord, slot, nbt).getPacket(), (Player)player);		
+//TODO 	MainProxy.sendPacketToPlayer(new PacketModuleNBT(NetworkConstants.THAUMICASPECTSINKLIST, getX(), getY(), getZ(), slot, nbt).getPacket(), (Player)player);		
+		MainProxy.sendPacketToPlayer(PacketHandler.getPacket(ThaumicAspectsSinkList.class).setSlot(slot).setTag(nbt).setPosX(getX()).setPosY(getY()).setPosZ(getZ()), (Player)player);
 	}
 
 	@Override
@@ -116,11 +142,13 @@ public class ModuleThaumicAspectSink implements ILogisticsGuiModule, IClientInfo
 		if(MainProxy.isServer(_world.getWorld())) {
 			NBTTagCompound nbt = new NBTTagCompound();
 			writeToNBT(nbt);
-			MainProxy.sendToPlayerList(new PacketModuleNBT(NetworkConstants.THAUMICASPECTSINKLIST, xCoord, yCoord, zCoord, slot, nbt).getPacket(), localModeWatchers);
+//TODO 		MainProxy.sendToPlayerList(new PacketModuleNBT(NetworkConstants.THAUMICASPECTSINKLIST, getX(), getY(), getZ(), slot, nbt).getPacket(), localModeWatchers);
+			MainProxy.sendToPlayerList(PacketHandler.getPacket(ThaumicAspectsSinkList.class).setSlot(slot).setTag(nbt).setPosX(getX()).setPosY(getY()).setPosZ(getZ()), localModeWatchers);
 		} else {
 			NBTTagCompound nbt = new NBTTagCompound();
 			writeToNBT(nbt);
-			MainProxy.sendPacketToServer(new PacketModuleNBT(NetworkConstants.THAUMICASPECTSINKLIST, xCoord, yCoord, zCoord, slot, nbt).getPacket());	
+//TODO 		MainProxy.sendPacketToServer(new PacketModuleNBT(NetworkConstants.THAUMICASPECTSINKLIST, getX(), getY(), getZ(), slot, nbt).getPacket());	
+			MainProxy.sendPacketToServer(PacketHandler.getPacket(ThaumicAspectsSinkList.class).setSlot(slot).setTag(nbt).setPosX(getX()).setPosY(getY()).setPosZ(getZ()));
 		}
 	}
 
@@ -182,5 +210,11 @@ public class ModuleThaumicAspectSink implements ILogisticsGuiModule, IClientInfo
 	@Override
 	public boolean recievePassive() {
 		return true;
+	}
+
+	@Override
+	@SideOnly(Side.CLIENT)
+	public Icon getIconTexture(IconRegister register) {
+		return register.registerIcon("logisticspipes:itemModule/ModuleThaumicAspectSink");
 	}
 }

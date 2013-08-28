@@ -11,7 +11,7 @@ import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.world.World;
+import net.minecraft.util.ChatMessageComponent;
 
 public class PipeItemsRequestLogisticsMk2 extends PipeItemsRequestLogistics {
 	
@@ -22,16 +22,16 @@ public class PipeItemsRequestLogisticsMk2 extends PipeItemsRequestLogistics {
 	}
 
 	@Override
-	public boolean handleClick(World world, int i, int j, int k, EntityPlayer entityplayer, SecuritySettings settings) {
+	public boolean handleClick(EntityPlayer entityplayer, SecuritySettings settings) {
 		//allow using upgrade manager
 		if(SimpleServiceLocator.buildCraftProxy.isUpgradeManagerEquipped(entityplayer) && !(entityplayer.isSneaking())) {
 			return false;
 		}
-		if(MainProxy.isServer(world)) {
+		if(MainProxy.isServer(getWorld())) {
 			if(settings == null || settings.openGui) {
 				openGui(entityplayer);
 			} else {
-				entityplayer.sendChatToPlayer("Permission denied");
+				entityplayer.sendChatToPlayer(ChatMessageComponent.func_111066_d("Permission denied"));
 			}
 		}
 		return true;
@@ -48,7 +48,7 @@ public class PipeItemsRequestLogisticsMk2 extends PipeItemsRequestLogistics {
 			}
 		}
 		if(flag) {
-			entityplayer.openGui(LogisticsPipes.instance, GuiIDs.GUI_Normal_Mk2_Orderer_ID, this.worldObj, this.xCoord , this.yCoord, this.zCoord);
+			entityplayer.openGui(LogisticsPipes.instance, GuiIDs.GUI_Normal_Mk2_Orderer_ID, this.getWorld(), this.getX() , this.getY(), this.getZ());
 		}
 	}
 
@@ -86,17 +86,16 @@ public class PipeItemsRequestLogisticsMk2 extends PipeItemsRequestLogistics {
 	}
 	
 	@Override
-	public void onBlockRemoval() {
-		super.onBlockRemoval();
-		if(MainProxy.isServer(this.worldObj)) {
+	public void onAllowedRemoval() {
+		if(MainProxy.isServer(this.getWorld())) {
 			this.dropDisk();
 		}
 	}
 	
 	public void dropDisk() {
 		if(disk != null) {
-			EntityItem item = new EntityItem(worldObj,this.xCoord, this.yCoord, this.zCoord, disk);
-			worldObj.spawnEntityInWorld(item);
+			EntityItem item = new EntityItem(getWorld(),this.getX(), this.getY(), this.getZ(), disk);
+			getWorld().spawnEntityInWorld(item);
 			disk = null;
 		}
 	}

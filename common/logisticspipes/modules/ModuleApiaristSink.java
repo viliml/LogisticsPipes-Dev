@@ -3,8 +3,6 @@ package logisticspipes.modules;
 import java.util.List;
 
 import logisticspipes.api.IRoutedPowerProvider;
-import logisticspipes.interfaces.ILogisticsGuiModule;
-import logisticspipes.interfaces.ILogisticsModule;
 import logisticspipes.interfaces.ISendRoutedItem;
 import logisticspipes.interfaces.IWorldProvider;
 import logisticspipes.logisticspipes.IInventoryProvider;
@@ -14,37 +12,37 @@ import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.utils.ItemIdentifier;
 import logisticspipes.utils.SinkReply;
 import logisticspipes.utils.SinkReply.FixedPriority;
+import net.minecraft.client.renderer.texture.IconRegister;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.Icon;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 
-public class ModuleApiaristSink implements ILogisticsGuiModule, INBTPacketProvider {
-	
-	public int xCoord;
-	public int yCoord;
-	public int zCoord;
-	
+public class ModuleApiaristSink extends LogisticsGuiModule implements INBTPacketProvider {
+
 	public enum FilterType {
-		Null("",0,0),
-		BeeAllele("gui.pipe.filter.BEE",3,2),
-		Drone("gui.pipe.filter.DRONE",4,2),
-		Princess("gui.pipe.filter.PRINCESS",5,2),
-		Queen("gui.pipe.filter.QUEEN",6,2),
-		Purebred("gui.pipe.filter.PURE_BREED",7,1),
-		Nocturnal("gui.pipe.filter.NOCTURNAL",8,2),
-		PureNocturnal("gui.pipe.filter.PURE_NOCTURNAL",9,2),
-		Flyer("gui.pipe.filter.FLYER",10,2),
-		PureFlyer("gui.pipe.filter.PURE_FLYER",11,2),
-		Cave("gui.pipe.filter.CAVE",12,2),
-		PureCave("gui.pipe.filter.PURE_CAVE",13,2);
+		Null("","anything",0),
+		BeeAllele("gui.pipe.filter.BEE","bee",2),
+		Drone("gui.pipe.filter.DRONE","drone",2),
+		Princess("gui.pipe.filter.PRINCESS","princess",2),
+		Queen("gui.pipe.filter.QUEEN","queen",2),
+		Purebred("gui.pipe.filter.PURE_BREED","pure_breed",1),
+		Nocturnal("gui.pipe.filter.NOCTURNAL","nocturnal",2),
+		PureNocturnal("gui.pipe.filter.PURE_NOCTURNAL","pure_nocturnal",2),
+		Flyer("gui.pipe.filter.FLYER","flyer",2),
+		PureFlyer("gui.pipe.filter.PURE_FLYER","pure_flyer",2),
+		Cave("gui.pipe.filter.CAVE","cave",2),
+		PureCave("gui.pipe.filter.PURE_CAVE","pure_flyer",2);
 		
-		FilterType(String text, int id, int secondSlot) {
+		FilterType(String text, String id, int secondSlot) {
 			this.path = text;
 			this.icon = id;
 			this.secondSlots = secondSlot;
 		}
 		
 		public String path;
-		public int icon;
+		public String icon;
 		public int secondSlots;
 	}
 	
@@ -190,6 +188,7 @@ public class ModuleApiaristSink implements ILogisticsGuiModule, INBTPacketProvid
 	public SinkSetting[] filter = new SinkSetting[6];
 	public IWorldProvider worldProvider;
 	private IRoutedPowerProvider _power;
+	private int slot;
 	
 	public ModuleApiaristSink() {
 		filter[0] = new SinkSetting(this);
@@ -260,7 +259,7 @@ public class ModuleApiaristSink implements ILogisticsGuiModule, INBTPacketProvid
 	
 	private static final SinkReply _sinkReply = new SinkReply(FixedPriority.APIARIST_BeeSink, 0, true, false, 2, 0);
 	@Override
-	public SinkReply sinksItem(ItemIdentifier itemID, int bestPriority, int bestCustomPriority) {
+	public SinkReply sinksItem(ItemIdentifier itemID, int bestPriority, int bestCustomPriority, boolean allowDefault, boolean includeInTransit) {
 		if(bestPriority > _sinkReply.fixedPriority.ordinal() || (bestPriority == _sinkReply.fixedPriority.ordinal() && bestCustomPriority >= _sinkReply.customPriority)) return null;
 		ItemStack item = itemID.makeNormalStack(1);
 		if(SimpleServiceLocator.forestryProxy.isBee(item)) {
@@ -276,7 +275,7 @@ public class ModuleApiaristSink implements ILogisticsGuiModule, INBTPacketProvid
 	}
 
 	@Override
-	public ILogisticsModule getSubModule(int slot) {
+	public LogisticsModule getSubModule(int slot) {
 		return null;
 	}
 
@@ -292,13 +291,36 @@ public class ModuleApiaristSink implements ILogisticsGuiModule, INBTPacketProvid
 	public void writeToPacketNBT(NBTTagCompound tag) {
 		writeToNBT(tag);
 	}
-
-	@Override
-	public void registerPosition(int xCoord, int yCoord, int zCoord, int slot) {
-		this.xCoord = xCoord;
-		this.yCoord = yCoord;
-		this.zCoord = zCoord;
+	
+	
+	@Override 
+	public void registerSlot(int slot) {
+		this.slot = slot;
 	}
+	
+	@Override 
+	public final int getX() {
+		if(slot>=0)
+			return this._power.getX();
+		else 
+			return 0;
+	}
+	@Override 
+	public final int getY() {
+		if(slot>=0)
+			return this._power.getY();
+		else 
+			return -1;
+	}
+	
+	@Override 
+	public final int getZ() {
+		if(slot>=0)
+			return this._power.getZ();
+		else 
+			return -1-slot;
+	}
+
 	@Override
 	public boolean hasGenericInterests() {
 		return true;
@@ -322,5 +344,11 @@ public class ModuleApiaristSink implements ILogisticsGuiModule, INBTPacketProvid
 	@Override
 	public boolean recievePassive() {
 		return true;
+	}
+
+	@Override
+	@SideOnly(Side.CLIENT)
+	public Icon getIconTexture(IconRegister register) {
+		return register.registerIcon("logisticspipes:itemModule/ModuleApiaristSink");
 	}
 }

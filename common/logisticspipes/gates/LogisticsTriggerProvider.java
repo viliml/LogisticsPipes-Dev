@@ -11,10 +11,9 @@ package logisticspipes.gates;
 import java.util.LinkedList;
 
 import logisticspipes.blocks.LogisticsSolderingTileEntity;
-import logisticspipes.blocks.powertile.LogisticsPowerJuntionTileEntity_BuildCraft;
-import logisticspipes.pipes.PipeItemsBuilderSupplierLogistics;
+import logisticspipes.blocks.powertile.LogisticsPowerJunctionTileEntity;
 import logisticspipes.pipes.PipeItemsCraftingLogistics;
-import logisticspipes.pipes.PipeItemsLiquidSupplier;
+import logisticspipes.pipes.PipeItemsFluidSupplier;
 import logisticspipes.pipes.PipeItemsSupplierLogistics;
 import logisticspipes.pipes.basic.CoreRoutedPipe;
 import logisticspipes.proxy.buildcraft.BuildCraftProxy;
@@ -30,7 +29,7 @@ public class LogisticsTriggerProvider implements ITriggerProvider{
 
 	@Override
 	public LinkedList<ITrigger> getPipeTriggers(IPipe pipe) {
-		if (pipe instanceof PipeItemsSupplierLogistics || pipe instanceof PipeItemsBuilderSupplierLogistics || pipe instanceof PipeItemsLiquidSupplier) {
+		if (pipe instanceof PipeItemsSupplierLogistics || pipe instanceof PipeItemsFluidSupplier) {
 			LinkedList<ITrigger> triggers = new LinkedList<ITrigger>();
 			triggers.add(BuildCraftProxy.LogisticsFailedTrigger);
 			return triggers;
@@ -53,7 +52,7 @@ public class LogisticsTriggerProvider implements ITriggerProvider{
 	
 	@Override
 	public LinkedList<ITrigger> getNeighborTriggers(Block block, TileEntity tile) {
-		if(tile instanceof LogisticsPowerJuntionTileEntity_BuildCraft){
+		if(tile instanceof LogisticsPowerJunctionTileEntity){
 			LinkedList<ITrigger> triggers = new  LinkedList<ITrigger>();
 			triggers.add(BuildCraftProxy.LogisticsNeedPowerTrigger);
 			return triggers;

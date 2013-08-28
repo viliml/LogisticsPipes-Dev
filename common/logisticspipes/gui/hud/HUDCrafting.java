@@ -4,13 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 import logisticspipes.hud.HUDConfig;
-import logisticspipes.logic.BaseLogicCrafting;
 import logisticspipes.pipes.PipeItemsCraftingLogistics;
 import logisticspipes.utils.ItemIdentifierStack;
 import logisticspipes.utils.gui.BasicGuiHelper;
 import net.minecraft.client.Minecraft;
-import net.minecraft.item.ItemStack;
-
 import org.lwjgl.opengl.GL11;
 
 public class HUDCrafting extends BasicHUDGui {
@@ -53,10 +50,10 @@ public class HUDCrafting extends BasicHUDGui {
 		}
 		GL11.glScalef(0.8F, 0.8F, -1F);
 		List<ItemIdentifierStack> list = new ArrayList<ItemIdentifierStack>();
-		List<ItemStack> craftables = ((BaseLogicCrafting)pipe.logic).getCraftedItems();
+		List<ItemIdentifierStack> craftables = pipe.getCraftedItems();
 		if( craftables != null && craftables.size() > 0) {
 			//TODO: handle multiple crafables.
-			list.add(ItemIdentifierStack.GetFromStack(craftables.get(0)));
+			list.add(craftables.get(0));
 		}
 		if(pipe.displayList.size() > 0) {
 			BasicGuiHelper.renderItemIdentifierStackListIntoGui(list, null, 0, 13, -17, 1, 1, 18, 18, mc, true, true, true, true);
@@ -68,17 +65,16 @@ public class HUDCrafting extends BasicHUDGui {
 
 	@Override
 	public boolean display(HUDConfig config) {
-		return config.isHUDCrafting() && ((pipe.getCraftingSigns().isEmpty() && ((BaseLogicCrafting)pipe.logic).getCraftedItems() != null) || pipe.displayList.size() > 0);
+		return config.isHUDCrafting() && ((pipe.getCraftingSigns().isEmpty() && pipe.getCraftedItems() != null) || pipe.displayList.size() > 0);
 	}
 
 
 	@Override
 	public boolean cursorOnWindow(int x, int y) {
-		return -50 < x && x < 50 && -50 < y && y < 50;
-	}
-
-	@Override
-	public void handleCursor(int x, int y) {
-		super.handleCursor(x, y);
+		if(pipe.displayList.size() > 0) {
+			return -50 < x && x < 50 && -28 < y && y < 30;
+		} else {
+			return -30 < x && x < 30 && -22 < y && y < 25;
+		}
 	}
 }

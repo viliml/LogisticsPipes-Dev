@@ -17,7 +17,7 @@ import org.lwjgl.opengl.GL11;
 import thaumcraft.api.EnumTag;
 import thaumcraft.api.ObjectTags;
 import thaumcraft.api.ThaumcraftApiHelper;
-import thaumcraft.client.UtilsFX;
+import thaumcraft.client.lib.UtilsFX;
 import buildcraft.BuildCraftSilicon;
 import cpw.mods.fml.client.FMLClientHandler;
 
@@ -28,7 +28,7 @@ public class ThaumCraftProxy implements IThaumCraftProxy {
 			Class<?> tcConfig = Class.forName("thaumcraft.common.Config");
 			itemShard = (Item)tcConfig.getField("itemShard").get((Object)null);
 		} catch (Exception e) {
-			if (LogisticsPipes.DEBUG) e.printStackTrace();
+			e.printStackTrace();
 		}
 	}
 	

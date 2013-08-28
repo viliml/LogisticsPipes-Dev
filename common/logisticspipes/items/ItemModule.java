@@ -6,11 +6,11 @@ import java.util.List;
 
 import logisticspipes.LogisticsPipes;
 import logisticspipes.api.IRoutedPowerProvider;
-import logisticspipes.interfaces.ILogisticsGuiModule;
-import logisticspipes.interfaces.ILogisticsModule;
 import logisticspipes.interfaces.ISendRoutedItem;
 import logisticspipes.interfaces.IWorldProvider;
 import logisticspipes.logisticspipes.IInventoryProvider;
+import logisticspipes.modules.LogisticsGuiModule;
+import logisticspipes.modules.LogisticsModule;
 import logisticspipes.modules.ModuleAdvancedExtractor;
 import logisticspipes.modules.ModuleAdvancedExtractorMK2;
 import logisticspipes.modules.ModuleAdvancedExtractorMK3;
@@ -25,6 +25,7 @@ import logisticspipes.modules.ModuleExtractorMk2;
 import logisticspipes.modules.ModuleExtractorMk3;
 import logisticspipes.modules.ModuleItemSink;
 import logisticspipes.modules.ModuleModBasedItemSink;
+import logisticspipes.modules.ModuleOreDictItemSink;
 import logisticspipes.modules.ModulePassiveSupplier;
 import logisticspipes.modules.ModulePolymorphicItemSink;
 import logisticspipes.modules.ModuleProvider;
@@ -34,8 +35,7 @@ import logisticspipes.modules.ModuleTerminus;
 import logisticspipes.modules.ModuleThaumicAspectSink;
 import logisticspipes.pipes.basic.LogisticsTileGenericPipe;
 import logisticspipes.proxy.MainProxy;
-import logisticspipes.textures.Textures;
-import logisticspipes.utils.ItemIdentifier;
+import logisticspipes.utils.ItemIdentifierStack;
 import logisticspipes.utils.SimpleInventory;
 import net.minecraft.client.renderer.texture.IconRegister;
 import net.minecraft.creativetab.CreativeTabs;
@@ -53,25 +53,6 @@ import org.lwjgl.input.Keyboard;
 
 public class ItemModule extends LogisticsItem {
 
-	//Texture Map
-	/*public static final String textureMap =	"0000111111111111" +
-											"0000011111111111" +
-											"0000000000001111" +
-											"1110111011111111" +
-											"1110111011111111" +
-											"0111111111111111" +
-											"1111111111111111" +
-											"1111111111111111" +
-											"1111111111111111" +
-											"1111111111111111" +
-											"1111111111111111" +
-											"1111111111111111" +
-											"1111111111111111" +
-											"1111111111111111" +
-											"1111111111111111" +
-											"1111111111111111";
-	 */
-
 	//PASSIVE MODULES
 	public static final int BLANK = 0;
 	public static final int ITEMSINK = 1;
@@ -86,6 +67,7 @@ public class ItemModule extends LogisticsItem {
 	public static final int APIARISTREFILLER = 10;
 	public static final int APIARISTTERMINUS = 11;
 	public static final int MODBASEDITEMSINK = 12;
+	public static final int OREDICTITEMSINK = 13;
 	public static final int THAUMICASPECTSINK = 30;
 
 	//PASSIVE MK 2
@@ -109,23 +91,23 @@ public class ItemModule extends LogisticsItem {
 	private class Module {
 		private String name;
 		private int id;
-		private Class<? extends ILogisticsModule> moduleClass;
+		private Class<? extends LogisticsModule> moduleClass;
 		private Icon moduleIcon = null;
 
-		private Module(int id, String name, Class<? extends ILogisticsModule> moduleClass) {
+		private Module(int id, String name, Class<? extends LogisticsModule> moduleClass) {
 			this.id = id;
 			this.name = name;
 			this.moduleClass = moduleClass;
 		}
 
-		private Module(int id, String name, Class<? extends ILogisticsModule> moduleClass, Icon textureIndex) {
+		private Module(int id, String name, Class<? extends LogisticsModule> moduleClass, Icon textureIndex) {
 			this.id = id;
 			this.name = name;
 			this.moduleClass = moduleClass;
 			this.moduleIcon = textureIndex;
 		}
 
-		private ILogisticsModule getILogisticsModule() {
+		private LogisticsModule getILogisticsModule() {
 			if(moduleClass == null) return null;
 			try {
 				return moduleClass.getConstructor(new Class[]{}).newInstance(new Object[]{});
@@ -145,7 +127,7 @@ public class ItemModule extends LogisticsItem {
 			return null;
 		}
 
-		private Class<? extends ILogisticsModule> getILogisticsModuleClass() {
+		private Class<? extends LogisticsModule> getILogisticsModuleClass() {
 			return moduleClass;
 		}
 
@@ -160,6 +142,21 @@ public class ItemModule extends LogisticsItem {
 		private Icon getIcon() {
 			return moduleIcon;
 		}
+		
+		private void registerModuleIcon(IconRegister par1IconRegister) {
+			if(moduleClass == null) {
+				this.moduleIcon = par1IconRegister.registerIcon("logisticspipes:" + getUnlocalizedName().replace("item.","") + "/blank");
+			} else {
+				try {
+					LogisticsModule instance = moduleClass.newInstance();
+					this.moduleIcon = instance.getIconTexture(par1IconRegister);
+				} catch (InstantiationException e) {
+					e.printStackTrace();
+				} catch (IllegalAccessException e) {
+					e.printStackTrace();
+				}
+			}
+		}
 	}
 
 	public ItemModule(int i) {
@@ -168,31 +165,32 @@ public class ItemModule extends LogisticsItem {
 	}
 
 	public void loadModules() {
-		registerModule(BLANK					, "Blank module"				, null,  Textures.BASE_TEXTURE_FILE);
-		registerModule(ITEMSINK					, "ItemSink module"				, ModuleItemSink.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(PASSIVE_SUPPLIER			, "Passive Supplier module"		, ModulePassiveSupplier.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(EXTRACTOR				, "Extractor module"			, ModuleExtractor.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(POLYMORPHIC_ITEMSINK		, "Polymorphic ItemSink module"	, ModulePolymorphicItemSink.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(QUICKSORT				, "QuickSort module"			, ModuleQuickSort.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(TERMINUS					, "Terminus module"				, ModuleTerminus.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(ADVANCED_EXTRACTOR		, "Advanced Extractor module"	, ModuleAdvancedExtractor.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(EXTRACTOR_MK2			, "Extractor MK2 module"		, ModuleExtractorMk2.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(ADVANCED_EXTRACTOR_MK2	, "Advanced Extractor MK2"		, ModuleAdvancedExtractorMK2.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(EXTRACTOR_MK3			, "Extractor MK3 module"		, ModuleExtractorMk3.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(ADVANCED_EXTRACTOR_MK3	, "Advanced Extractor MK3"		, ModuleAdvancedExtractorMK3.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(PROVIDER					, "Provider module"				, ModuleProvider.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(PROVIDER_MK2				, "Provider module MK2"			, ModuleProviderMk2.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(ELECTRICMANAGER			, "Electric Manager module"		, ModuleElectricManager.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(ELECTRICBUFFER			, "Electric Buffer module"		, ModuleElectricBuffer.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(BEEANALYZER				, "Bee Analyzer module"			, ModuleApiaristAnalyser.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(BEESINK					, "BeeSink module"				, ModuleApiaristSink.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(APIARISTREFILLER			, "Apiary Refiller module"		, ModuleApiaristRefiller.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(APIARISTTERMINUS			, "Drone Terminus module"		, ModuleApiaristTerminus.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(MODBASEDITEMSINK			, "Mod Based ItemSink module"	, ModuleModBasedItemSink.class, Textures.BASE_TEXTURE_FILE);
-		registerModule(THAUMICASPECTSINK		, "Thaumic AspectSink module"	, ModuleThaumicAspectSink.class, Textures.BASE_TEXTURE_FILE);
+		registerModule(BLANK					, "Blank module"				, null);
+		registerModule(ITEMSINK					, "ItemSink module"				, ModuleItemSink.class);
+		registerModule(PASSIVE_SUPPLIER			, "Passive Supplier module"		, ModulePassiveSupplier.class);
+		registerModule(EXTRACTOR				, "Extractor module"			, ModuleExtractor.class);
+		registerModule(POLYMORPHIC_ITEMSINK		, "Polymorphic ItemSink module"	, ModulePolymorphicItemSink.class);
+		registerModule(QUICKSORT				, "QuickSort module"			, ModuleQuickSort.class);
+		registerModule(TERMINUS					, "Terminus module"				, ModuleTerminus.class);
+		registerModule(ADVANCED_EXTRACTOR		, "Advanced Extractor module"	, ModuleAdvancedExtractor.class);
+		registerModule(EXTRACTOR_MK2			, "Extractor MK2 module"		, ModuleExtractorMk2.class);
+		registerModule(ADVANCED_EXTRACTOR_MK2	, "Advanced Extractor MK2"		, ModuleAdvancedExtractorMK2.class);
+		registerModule(EXTRACTOR_MK3			, "Extractor MK3 module"		, ModuleExtractorMk3.class);
+		registerModule(ADVANCED_EXTRACTOR_MK3	, "Advanced Extractor MK3"		, ModuleAdvancedExtractorMK3.class);
+		registerModule(PROVIDER					, "Provider module"				, ModuleProvider.class);
+		registerModule(PROVIDER_MK2				, "Provider module MK2"			, ModuleProviderMk2.class);
+		registerModule(ELECTRICMANAGER			, "Electric Manager module"		, ModuleElectricManager.class);
+		registerModule(ELECTRICBUFFER			, "Electric Buffer module"		, ModuleElectricBuffer.class);
+		registerModule(BEEANALYZER				, "Bee Analyzer module"			, ModuleApiaristAnalyser.class);
+		registerModule(BEESINK					, "BeeSink module"				, ModuleApiaristSink.class);
+		registerModule(APIARISTREFILLER			, "Apiary Refiller module"		, ModuleApiaristRefiller.class);
+		registerModule(APIARISTTERMINUS			, "Drone Terminus module"		, ModuleApiaristTerminus.class);
+		registerModule(MODBASEDITEMSINK			, "Mod Based ItemSink module"	, ModuleModBasedItemSink.class);
+		registerModule(OREDICTITEMSINK			, "OreDict ItemSink module"		, ModuleOreDictItemSink.class);
+		registerModule(THAUMICASPECTSINK		, "Thaumic AspectSink module"	, ModuleThaumicAspectSink.class);
 	}
-/*
-	public void registerModule(int id, String name, Class<? extends ILogisticsModule> moduleClass) {
+
+	public void registerModule(int id, String name, Class<? extends LogisticsModule> moduleClass) {
 		boolean flag = true;
 		for(Module module:modules) {
 			if(module.getId() == id) {
@@ -201,22 +199,6 @@ public class ItemModule extends LogisticsItem {
 		}
 		if(!"".equals(name) && flag) {
 			modules.add(new Module(id,name,moduleClass));
-		} else if(!flag) {
-			throw new UnsupportedOperationException("Someting went wrong while registering a new Logistics Pipe Module. (Id " + id + " already in use)");
-		} else {
-			throw new UnsupportedOperationException("Someting went wrong while registering a new Logistics Pipe Module. (No name given)");
-		}
-	}*/
-
-	public void registerModule(int id, String name, Class<? extends ILogisticsModule> moduleClass, Icon textureId) {
-		boolean flag = true;
-		for(Module module:modules) {
-			if(module.getId() == id) {
-				flag = false;
-			}
-		}
-		if(!"".equals(name) && flag) {
-			modules.add(new Module(id,name,moduleClass,textureId));
 		} else if(!flag) {
 			throw new UnsupportedOperationException("Someting went wrong while registering a new Logistics Pipe Module. (Id " + id + " already in use)");
 		} else {
@@ -234,32 +216,29 @@ public class ItemModule extends LogisticsItem {
 	}
 
 	@Override
-	public CreativeTabs getCreativeTab()
-	{
+	public CreativeTabs getCreativeTab() {
 		return CreativeTabs.tabRedstone;
 	}
 
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	@Override
-	public void getSubItems(int par1, CreativeTabs par2CreativeTabs, List par3List)
-	{
+	public void getSubItems(int par1, CreativeTabs par2CreativeTabs, List par3List) {
 		for(Module module:modules) {
 			par3List.add(new ItemStack(this, 1, module.getId()));
 		}
 	}
 
 	private void openConfigGui(ItemStack par1ItemStack, EntityPlayer par2EntityPlayer, World par3World) {
-		ILogisticsModule module = getModuleForItem(par1ItemStack, null, null, null, null, null);
-		if(module != null && module instanceof ILogisticsGuiModule) {
+		LogisticsModule module = getModuleForItem(par1ItemStack, null, null, null, null, null);
+		if(module != null && module instanceof LogisticsGuiModule) {
 			if(par1ItemStack != null && par1ItemStack.stackSize > 0) {
-				par2EntityPlayer.openGui(LogisticsPipes.instance, -1, par3World, ((ILogisticsGuiModule)module).getGuiHandlerID(), -1 ,par2EntityPlayer.inventory.currentItem);
+				par2EntityPlayer.openGui(LogisticsPipes.instance, -1, par3World, ((LogisticsGuiModule)module).getGuiHandlerID(), -1 ,par2EntityPlayer.inventory.currentItem);
 			}
 		}
 	}
 
 	@Override
-	public ItemStack onItemRightClick(final ItemStack par1ItemStack, final World par2World, final EntityPlayer par3EntityPlayer)
-	{
+	public ItemStack onItemRightClick(final ItemStack par1ItemStack, final World par2World, final EntityPlayer par3EntityPlayer) {
 		if(MainProxy.isServer(par3EntityPlayer.worldObj)) {
 			openConfigGui(par1ItemStack, par3EntityPlayer, par2World);
 		}
@@ -278,7 +257,7 @@ public class ItemModule extends LogisticsItem {
 		return true;
 	}
 
-	public ILogisticsModule getModuleForItem(ItemStack itemStack, ILogisticsModule currentModule, IInventoryProvider invProvider, ISendRoutedItem itemSender, IWorldProvider world, IRoutedPowerProvider power){
+	public LogisticsModule getModuleForItem(ItemStack itemStack, LogisticsModule currentModule, IInventoryProvider invProvider, ISendRoutedItem itemSender, IWorldProvider world, IRoutedPowerProvider power){
 		if (itemStack == null) return null;
 		if (itemStack.itemID != this.itemID) return null;
 		for(Module module:modules) {
@@ -287,7 +266,7 @@ public class ItemModule extends LogisticsItem {
 				if(currentModule != null) {
 					if (module.getILogisticsModuleClass().equals(currentModule.getClass())) return currentModule;
 				}
-				ILogisticsModule newmodule = module.getILogisticsModule();
+				LogisticsModule newmodule = module.getILogisticsModule();
 				if(newmodule == null) return null;
 				newmodule.registerHandler(invProvider, itemSender, world, power);
 				return newmodule;
@@ -305,23 +284,12 @@ public class ItemModule extends LogisticsItem {
 		}
 		return null;
 	}
-	private void registerModuleIcon(IconRegister par1IconRegister, Module module)
-	{
-		String moduleNameStr;
-		if(module.getILogisticsModuleClass()==null)
-			moduleNameStr="blank";
-		else
-			moduleNameStr=module.getILogisticsModuleClass().toString().replace("class logisticspipes.modules.","");
-			
-		module.moduleIcon=par1IconRegister.registerIcon("logisticspipes:"+getUnlocalizedName().replace("item.","")+"/"+moduleNameStr);
-	}
+
 	@Override
-	public void registerIcons(IconRegister par1IconRegister)
-	{
-		if(modules.size()<=0)
-			return;
+	public void registerIcons(IconRegister par1IconRegister) {
+		if(modules.size()<=0) return;
 		for(Module module:modules) {
-			registerModuleIcon(par1IconRegister,module);
+			module.registerModuleIcon(par1IconRegister);
 		}
 	}
 	
@@ -336,20 +304,6 @@ public class ItemModule extends LogisticsItem {
 			}
 		}
 		return null;
-/*
-		if (i >= 500){
-			return 5 * 16 + (i - 500);
-		}
-
-		if (i >= 200){
-			return 4 * 16 + (i - 200);
-		}
-
-		if (i >= 100){
-			return 3 * 16 + (i - 100);
-		}
-
-		return 2 * 16 + i;*/
 	}
 
 	@SuppressWarnings({ "unchecked", "rawtypes" })
@@ -376,12 +330,12 @@ public class ItemModule extends LogisticsItem {
 								SimpleInventory inv = new SimpleInventory(size, "InformationTempInventory", Integer.MAX_VALUE);
 								inv.readFromNBT(module, prefix);
 								for(int pos=0;pos < inv.getSizeInventory();pos++) {
-									ItemStack stack = inv.getStackInSlot(pos);
+									ItemIdentifierStack stack = inv.getIDStackInSlot(pos);
 									if(stack != null) {
 										if(stack.stackSize > 1) {
-											list.add("  " + stack.stackSize+"x " + ItemIdentifier.get(stack).getFriendlyName());
+											list.add("  " + stack.stackSize+"x " + stack.getFriendlyName());
 										} else {
-											list.add("  " + ItemIdentifier.get(stack).getFriendlyName());
+											list.add("  " + stack.getFriendlyName());
 										}
 									}
 								}

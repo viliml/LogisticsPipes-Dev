@@ -1,8 +1,8 @@
 package logisticspipes.utils.gui;
 
 import logisticspipes.LogisticsPipes;
-import logisticspipes.interfaces.ILogisticsModule;
 import logisticspipes.logisticspipes.ItemModuleInformationManager;
+import logisticspipes.modules.LogisticsModule;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.inventory.Slot;
@@ -11,7 +11,7 @@ import net.minecraft.item.ItemStack;
 public class DummyModuleContainer extends DummyContainer {
 	
 	private ItemStack moduleStack;
-	private ILogisticsModule module;
+	private LogisticsModule module;
 	private int slot;
 	
 	public DummyModuleContainer(EntityPlayer player, int slot) {
@@ -19,11 +19,11 @@ public class DummyModuleContainer extends DummyContainer {
 		this.slot = slot;
 		moduleStack = player.inventory.mainInventory[slot];
 		module = LogisticsPipes.ModuleItem.getModuleForItem(moduleStack, null, null, null, null, null);
-		module.registerPosition(0, -1, slot, 20);
+		module.registerSlot(-1-slot);
 		ItemModuleInformationManager.readInformation(moduleStack, module);
 	}
 	
-	public ILogisticsModule getModule() {
+	public LogisticsModule getModule() {
 		return module;
 	}
 
@@ -40,8 +40,8 @@ public class DummyModuleContainer extends DummyContainer {
     }
 
 	@Override
-	public void onCraftGuiClosed(EntityPlayer par1EntityPlayer) {
-		super.onCraftGuiClosed(par1EntityPlayer);
+	public void onContainerClosed(EntityPlayer par1EntityPlayer) {
+		super.onContainerClosed(par1EntityPlayer);
 		ItemModuleInformationManager.saveInfotmation(par1EntityPlayer.inventory.mainInventory[slot], module);
 		par1EntityPlayer.inventory.onInventoryChanged();
 	}

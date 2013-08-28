@@ -1,16 +1,15 @@
 package logisticspipes.blocks;
 
 import logisticspipes.LogisticsPipes;
-import logisticspipes.blocks.powertile.LogisticsPowerJuntionTileEntity_BuildCraft;
+import logisticspipes.blocks.crafting.LogisticsCraftingTableTileEntity;
+import logisticspipes.blocks.powertile.LogisticsPowerJunctionTileEntity;
 import logisticspipes.interfaces.IRotationProvider;
 import logisticspipes.network.GuiIDs;
 import net.minecraft.block.BlockContainer;
 import net.minecraft.block.material.Material;
 import net.minecraft.client.renderer.texture.IconRegister;
 import net.minecraft.creativetab.CreativeTabs;
-import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.player.EntityPlayer;
-import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.Icon;
 import net.minecraft.world.IBlockAccess;
@@ -23,8 +22,9 @@ public class LogisticsSolidBlock extends BlockContainer {
 	public static final int SOLDERING_STATION = 0;
 	public static final int LOGISTICS_POWER_JUNCTION = 1;
 	public static final int LOGISTICS_SECURITY_STATION = 2;
+	public static final int LOGISTICS_AUTOCRAFTING_TABLE = 3;
 	
-	private static final Icon[] icons = new Icon[10];
+	private static final Icon[] icons = new Icon[13];
 	
 	public LogisticsSolidBlock(int par1) {
 		super(par1, Material.iron);
@@ -50,14 +50,16 @@ public class LogisticsSolidBlock extends BlockContainer {
 			case LOGISTICS_SECURITY_STATION:
 				par5EntityPlayer.openGui(LogisticsPipes.instance, GuiIDs.GUI_Security_Station_ID, par1World, par2, par3, par4);
 				return true;
+			case LOGISTICS_AUTOCRAFTING_TABLE:
+				par5EntityPlayer.openGui(LogisticsPipes.instance, GuiIDs.GUI_Auto_Crafting_ID, par1World, par2, par3, par4);
+				return true;
 				default:break;
 			}
-			return false;
-		} else {
-			return false;
 		}
+		return false;
 	}
-
+/*
+ *TODO: does this code need fixing?
 	@Override
 	public void onBlockPlacedBy(World par1World, int par2, int par3, int par4, EntityLiving par5EntityLiving, ItemStack itemStack) {
 		super.onBlockPlacedBy(par1World, par2, par3, par4, par5EntityLiving, itemStack);
@@ -82,13 +84,16 @@ public class LogisticsSolidBlock extends BlockContainer {
 				((IRotationProvider)tile).setRotation(3);
 			}
 		}
-	}
+	}*/
 
 	@Override
 	public void breakBlock(World par1World, int par2, int par3, int par4, int par5, int par6) {
 		TileEntity tile = par1World.getBlockTileEntity(par2, par3, par4);
 		if(tile instanceof LogisticsSolderingTileEntity) {
 			((LogisticsSolderingTileEntity)tile).onBlockBreak();
+		}
+		if(tile instanceof LogisticsCraftingTableTileEntity) {
+			((LogisticsCraftingTableTileEntity)tile).onBlockBreak();
 		}
 		super.breakBlock(par1World, par2, par3, par4, par5, par6);
 	}
@@ -110,16 +115,11 @@ public class LogisticsSolidBlock extends BlockContainer {
 	    	case SOLDERING_STATION:
 	    		return new LogisticsSolderingTileEntity();
 	    	case LOGISTICS_POWER_JUNCTION:
-				LogisticsPowerJuntionTileEntity_BuildCraft instance;
-				try {
-					instance = LogisticsPipes.powerTileEntity.newInstance();
-				} catch (Exception e) {
-					e.printStackTrace();
-					instance = new LogisticsPowerJuntionTileEntity_BuildCraft();
-				}
-	    		return instance;
+	    		return new LogisticsPowerJunctionTileEntity();
 	    	case LOGISTICS_SECURITY_STATION:
 	    		return new LogisticsSecurityTileEntity();
+			case LOGISTICS_AUTOCRAFTING_TABLE:
+				return new LogisticsCraftingTableTileEntity();
         	default: 
         		return null;
         }
@@ -130,6 +130,8 @@ public class LogisticsSolidBlock extends BlockContainer {
 		switch(par1) {
 		case SOLDERING_STATION:
 		case LOGISTICS_POWER_JUNCTION:
+		case LOGISTICS_SECURITY_STATION:
+		case LOGISTICS_AUTOCRAFTING_TABLE:
 			return par1;
 		}
 		return super.damageDropped(par1);
@@ -151,7 +153,7 @@ public class LogisticsSolidBlock extends BlockContainer {
 	@SideOnly(Side.CLIENT)
 	public void registerIcons(IconRegister par1IconRegister)
 	{
-		for(int i=0;i<10;i++)
+		for(int i=0;i<13;i++)
 		{
 			icons[i]=par1IconRegister.registerIcon("logisticspipes:lpsolidblock/"+i);
 		}
@@ -229,6 +231,15 @@ public class LogisticsSolidBlock extends BlockContainer {
 				return icons[5];
 			default: //Front
 				return icons[6];
+			}
+		case LOGISTICS_AUTOCRAFTING_TABLE:
+			switch (side) {
+			case 1: //TOP
+				return icons[11];
+			case 0: //Bottom
+				return icons[12];
+			default: //Front
+				return icons[10];
 			}
 		default:
 			return icons[0];

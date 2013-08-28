@@ -3,7 +3,6 @@ package logisticspipes.modules;
 import java.util.List;
 
 import logisticspipes.api.IRoutedPowerProvider;
-import logisticspipes.interfaces.ILogisticsModule;
 import logisticspipes.interfaces.ISendRoutedItem;
 import logisticspipes.interfaces.IWorldProvider;
 import logisticspipes.logisticspipes.IInventoryProvider;
@@ -11,10 +10,14 @@ import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.utils.ItemIdentifier;
 import logisticspipes.utils.SinkReply;
 import logisticspipes.utils.SinkReply.FixedPriority;
+import net.minecraft.client.renderer.texture.IconRegister;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.Icon;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 
-public class ModuleApiaristTerminus implements ILogisticsModule {
+public class ModuleApiaristTerminus extends LogisticsModule {
 
 	private IRoutedPowerProvider _power;
 	
@@ -29,9 +32,24 @@ public class ModuleApiaristTerminus implements ILogisticsModule {
 		_power = powerProvider;
 	}
 
-	@Override
-	public void registerPosition(int xCoord, int yCoord, int zCoord, int slot) {}
+
+	@Override 
+	public void registerSlot(int slot) {
+	}
 	
+	@Override 
+	public final int getX() {
+		return this._power.getX();
+	}
+	@Override 
+	public final int getY() {
+		return this._power.getY();
+	}
+	
+	@Override 
+	public final int getZ() {
+		return this._power.getZ();
+	}	
 	private boolean replyCheck(ItemStack item) {
 		if (SimpleServiceLocator.forestryProxy.isDrone(item)) {
 			return true;
@@ -41,7 +59,7 @@ public class ModuleApiaristTerminus implements ILogisticsModule {
 
 	private static final SinkReply _sinkReply = new SinkReply(FixedPriority.Terminus, 0, true, false, 5, 0);
 	@Override
-	public SinkReply sinksItem(ItemIdentifier item, int bestPriority, int bestCustomPriority) {
+	public SinkReply sinksItem(ItemIdentifier item, int bestPriority, int bestCustomPriority, boolean allowDefault, boolean includeInTransit) {
 		if(bestPriority > _sinkReply.fixedPriority.ordinal() || (bestPriority == _sinkReply.fixedPriority.ordinal() && bestCustomPriority >= _sinkReply.customPriority)) return null;
 		boolean decision = replyCheck(item.makeNormalStack(1));
 		if (decision) {
@@ -53,7 +71,7 @@ public class ModuleApiaristTerminus implements ILogisticsModule {
 	}
 
 	@Override
-	public ILogisticsModule getSubModule(int slot) {
+	public LogisticsModule getSubModule(int slot) {
 		return null;
 	}
 
@@ -82,5 +100,11 @@ public class ModuleApiaristTerminus implements ILogisticsModule {
 	@Override
 	public boolean recievePassive() {
 		return true;
+	}
+
+	@Override
+	@SideOnly(Side.CLIENT)
+	public Icon getIconTexture(IconRegister register) {
+		return register.registerIcon("logisticspipes:itemModule/ModuleApiaristTerminus");
 	}
 }

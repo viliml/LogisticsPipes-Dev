@@ -12,9 +12,10 @@ import java.util.LinkedList;
 
 import logisticspipes.interfaces.ISecurityStationManager;
 import logisticspipes.interfaces.routing.IDirectConnectionManager;
-import logisticspipes.logistics.ILogisticsLiquidManager;
+import logisticspipes.logistics.ILogisticsFluidManager;
 import logisticspipes.logistics.ILogisticsManagerV2;
 import logisticspipes.proxy.buildcraft.BuildCraftProxy;
+import logisticspipes.proxy.interfaces.IBetterStorageProxy;
 import logisticspipes.proxy.interfaces.ICCProxy;
 import logisticspipes.proxy.interfaces.ICraftingRecipeProvider;
 import logisticspipes.proxy.interfaces.IForestryProxy;
@@ -23,6 +24,7 @@ import logisticspipes.proxy.interfaces.IThaumCraftProxy;
 import logisticspipes.proxy.interfaces.IThermalExpansionProxy;
 import logisticspipes.proxy.specialconnection.SpecialPipeConnection;
 import logisticspipes.proxy.specialconnection.SpecialTileConnection;
+import logisticspipes.proxy.specialtankhandler.SpecialTankHandler;
 import logisticspipes.routing.IRouterManager;
 import logisticspipes.ticks.ClientPacketBufferHandlerThread;
 import logisticspipes.ticks.ServerPacketBufferHandlerThread;
@@ -72,9 +74,9 @@ public final class SimpleServiceLocator {
 		logisticsManager = logisticsMngr;
 	}
 	
-	public static ILogisticsLiquidManager logisticsLiquidManager;
-	public static void setLogisticsLiquidManager(final ILogisticsLiquidManager logisticsMngr){
-		logisticsLiquidManager = logisticsMngr;
+	public static ILogisticsFluidManager logisticsFluidManager;
+	public static void setLogisticsFluidManager(final ILogisticsFluidManager logisticsMngr){
+		logisticsFluidManager = logisticsMngr;
 	}
 	
 	public static InventoryUtilFactory inventoryUtilFactory;
@@ -107,6 +109,16 @@ public final class SimpleServiceLocator {
 	public static IThermalExpansionProxy thermalExpansionProxy;
 	public static void setThermalExpansionProxy(IThermalExpansionProxy proxy) {
 		thermalExpansionProxy = proxy;
+	}
+	
+	public static IBetterStorageProxy betterStorageProxy;
+	public static void setBetterStorageProxy(IBetterStorageProxy proxy) {
+		betterStorageProxy = proxy;
+	}
+	
+	public static SpecialTankHandler specialTankHandler;
+	public static void setSpecialTankHandler(SpecialTankHandler proxy) {
+		specialTankHandler = proxy;
 	}
 
 	public static ClientPacketBufferHandlerThread clientBufferHandler;

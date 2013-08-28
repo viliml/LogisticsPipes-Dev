@@ -1,15 +1,11 @@
 package logisticspipes.proxy.side;
 
-import java.io.File;
-
-import javax.imageio.ImageIO;
-
-import buildcraft.transport.TileGenericPipe;
 import logisticspipes.LogisticsPipes;
-import logisticspipes.blocks.CraftingSignRenderer;
 import logisticspipes.blocks.LogisticsSecurityTileEntity;
 import logisticspipes.blocks.LogisticsSignTileEntity;
 import logisticspipes.blocks.LogisticsSolderingTileEntity;
+import logisticspipes.blocks.crafting.LogisticsCraftingTableTileEntity;
+import logisticspipes.blocks.powertile.LogisticsPowerJunctionTileEntity;
 import logisticspipes.config.Configs;
 import logisticspipes.pipefxhandlers.Particles;
 import logisticspipes.pipefxhandlers.PipeFXRenderHandler;
@@ -20,26 +16,31 @@ import logisticspipes.pipefxhandlers.providers.EntityOrangeSparkleFXProvider;
 import logisticspipes.pipefxhandlers.providers.EntityRedSparkleFXProvider;
 import logisticspipes.pipefxhandlers.providers.EntityVioletSparkleFXProvider;
 import logisticspipes.pipefxhandlers.providers.EntityWhiteSparkleFXProvider;
-import logisticspipes.proxy.buildcraft.BuildCraftProxy;
+import logisticspipes.pipes.basic.LogisticsTileGenericPipe;
+import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.proxy.interfaces.IProxy;
+import logisticspipes.renderer.LogisticsPipeWorldRenderer;
 import logisticspipes.renderer.LogisticsRenderPipe;
-import logisticspipes.textures.OverlayManager;
 import logisticspipes.textures.Textures;
-//import logisticspipes.textures.LogisticsPipesTextureStatic;
 import logisticspipes.utils.ItemIdentifier;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.client.renderer.texture.IconRegister;
+import net.minecraft.client.renderer.tileentity.TileEntityRenderer;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.DimensionManager;
+import buildcraft.transport.TileGenericPipe;
+import buildcraft.transport.render.RenderPipe;
 import cpw.mods.fml.client.FMLClientHandler;
 import cpw.mods.fml.client.registry.ClientRegistry;
+import cpw.mods.fml.client.registry.RenderingRegistry;
 import cpw.mods.fml.common.network.Player;
 import cpw.mods.fml.common.registry.GameRegistry;
+//import logisticspipes.textures.LogisticsPipesTextureStatic;
 
 
 public class ClientProxy implements IProxy {
@@ -55,17 +56,24 @@ public class ClientProxy implements IProxy {
 	}
 
 	@Override
-	public void registerTileEntitis() {
-		ClientRegistry.registerTileEntity(LogisticsSignTileEntity.class, "net.minecraft.src.buildcraft.logisticspipes.blocks.LogisticsTileEntiy", new CraftingSignRenderer());
-		ClientRegistry.registerTileEntity(LogisticsSignTileEntity.class, "logisticspipes.blocks.LogisticsSignTileEntity", new CraftingSignRenderer());
+	public void registerTileEntities() {
+		GameRegistry.registerTileEntity(LogisticsSignTileEntity.class, "net.minecraft.src.buildcraft.logisticspipes.blocks.LogisticsTileEntiy");
+		GameRegistry.registerTileEntity(LogisticsSignTileEntity.class, "logisticspipes.blocks.LogisticsSignTileEntity");
 		GameRegistry.registerTileEntity(LogisticsSolderingTileEntity.class, "logisticspipes.blocks.LogisticsSolderingTileEntity");
-		GameRegistry.registerTileEntity(LogisticsPipes.powerTileEntity, "logisticspipes.blocks.powertile.LogisticsPowerJuntionTileEntity");
+		GameRegistry.registerTileEntity(LogisticsPowerJunctionTileEntity.class, "logisticspipes.blocks.powertile.LogisticsPowerJuntionTileEntity");
 		GameRegistry.registerTileEntity(LogisticsSecurityTileEntity.class, "logisticspipes.blocks.LogisticsSecurityTileEntity");
+		GameRegistry.registerTileEntity(LogisticsCraftingTableTileEntity.class, "logisticspipes.blocks.crafting.LogisticsCraftingTableTileEntity");
 		if(!Configs.LOGISTICS_TILE_GENERIC_PIPE_REPLACEMENT_DISABLED) {
-			GameRegistry.registerTileEntity(BuildCraftProxy.logisticsTileGenericPipe, LogisticsPipes.logisticsTileGenericPipeMapping);
+			GameRegistry.registerTileEntity(LogisticsTileGenericPipe.class, LogisticsPipes.logisticsTileGenericPipeMapping);
 		}
 		LogisticsRenderPipe lrp = new LogisticsRenderPipe();
-		ClientRegistry.bindTileEntitySpecialRenderer(BuildCraftProxy.logisticsTileGenericPipe, lrp);
+		ClientRegistry.bindTileEntitySpecialRenderer(LogisticsTileGenericPipe.class, lrp);
+		SimpleServiceLocator.buildCraftProxy.resetItemRotation(lrp);
+		Object brp = TileEntityRenderer.instance.specialRendererMap.get(TileGenericPipe.class);
+		if(brp instanceof RenderPipe) {
+			SimpleServiceLocator.buildCraftProxy.resetItemRotation((RenderPipe) brp);
+		}
+		RenderingRegistry.registerBlockHandler(new LogisticsPipeWorldRenderer());
 	}
 
 	@Override
@@ -139,7 +147,7 @@ public class ClientProxy implements IProxy {
 		if(world instanceof WorldClient) {
 			return ((WorldClient)world).provider.dimensionId;
 		}
-		return world.getWorldInfo().getDimension();
+		return world.getWorldInfo().getVanillaDimension();
 	}
 
 	@Override
@@ -175,26 +183,13 @@ public class ClientProxy implements IProxy {
 	// BuildCraft method end
 
 	@Override
-	public void addLogisticsPipesOverride(int index, String override1, String override2, boolean flag) {
-		IconRegister par1IconRegister=Minecraft.getMinecraft().renderEngine.textureMapBlocks;
-		if(flag)
-			Textures.LPpipeIconProvider.icons[index]=par1IconRegister.registerIcon("logisticspipes:"+override1);
-		else
-			Textures.LPpipeIconProvider.icons[index]=par1IconRegister.registerIcon("logisticspipes:"+override1.replace("pipes/", "pipes/overlay_gen/")+"/"+override2.replace("pipes/status_overlay/",""));
-		if(LogisticsPipes.DEBUG_OVGEN&&!flag)
-		{
-			try
-			{
-				File output=new File("mods/mods/logisticspipes/textures/blocks/"+override1.replace("pipes/", "pipes/overlay_gen/"),override2.replace("pipes/status_overlay/", "")+".png");
-				output.mkdirs();
-				
-				ImageIO.write(OverlayManager.generateOverlay(override1.replace("pipes/","pipes/original/")+".png", override2+".png"), "PNG", output);
-			}
-			catch(Exception e)
-			{
-				System.out.println("Could not save:/mods/logisticspipes/textures/blocks/"+override1+"/"+override2.replace("pipes/status_overlay/", "")+".png");
+	public void addLogisticsPipesOverride(IconRegister par1IconRegister, int index, String override1, String override2, boolean flag) {
+		if(par1IconRegister != null) {
+			if(flag) {
+				Textures.LPpipeIconProvider.setIcon(index, par1IconRegister.registerIcon("logisticspipes:"+override1));
+			} else {
+				Textures.LPpipeIconProvider.setIcon(index, par1IconRegister.registerIcon("logisticspipes:"+override1.replace("pipes/", "pipes/overlay_gen/")+"/"+override2.replace("pipes/status_overlay/","")));
 			}
 		}
-		
 	}
 }

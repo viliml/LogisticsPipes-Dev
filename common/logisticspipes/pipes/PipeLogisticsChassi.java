@@ -22,8 +22,8 @@ import logisticspipes.gui.GuiChassiPipe;
 import logisticspipes.gui.hud.HUDChassiePipe;
 import logisticspipes.interfaces.IHeadUpDisplayRenderer;
 import logisticspipes.interfaces.IHeadUpDisplayRendererProvider;
+import logisticspipes.interfaces.IInventoryUtil;
 import logisticspipes.interfaces.ILegacyActiveModule;
-import logisticspipes.interfaces.ILogisticsModule;
 import logisticspipes.interfaces.ISendQueueContentRecieiver;
 import logisticspipes.interfaces.ISendRoutedItem;
 import logisticspipes.interfaces.IWorldProvider;
@@ -32,25 +32,29 @@ import logisticspipes.interfaces.routing.IProvideItems;
 import logisticspipes.interfaces.routing.IRelayItem;
 import logisticspipes.interfaces.routing.IRequestItems;
 import logisticspipes.items.ItemModule;
-import logisticspipes.logic.BaseChassiLogic;
 import logisticspipes.logisticspipes.ChassiModule;
 import logisticspipes.logisticspipes.ChassiTransportLayer;
+import logisticspipes.logisticspipes.ExtractionMode;
 import logisticspipes.logisticspipes.IInventoryProvider;
 import logisticspipes.logisticspipes.IRoutedItem;
 import logisticspipes.logisticspipes.IRoutedItem.TransportMode;
 import logisticspipes.logisticspipes.ItemModuleInformationManager;
-import logisticspipes.logisticspipes.SidedInventoryAdapter;
 import logisticspipes.logisticspipes.TransportLayer;
-import logisticspipes.network.NetworkConstants;
-import logisticspipes.network.packets.PacketCoordinates;
-import logisticspipes.network.packets.PacketPipeInteger;
-import logisticspipes.network.packets.PacketPipeInvContent;
-import logisticspipes.network.packets.PacketPipeUpdate;
+import logisticspipes.modules.LogisticsModule;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.hud.HUDStartWatchingPacket;
+import logisticspipes.network.packets.hud.HUDStopWatchingPacket;
+import logisticspipes.network.packets.module.RequestPipeUpdatePacket;
+import logisticspipes.network.packets.pipe.ChassiePipeModuleContent;
+import logisticspipes.network.packets.pipe.PipeUpdate;
+import logisticspipes.network.packets.pipe.SendQueueContent;
 import logisticspipes.pipefxhandlers.Particles;
 import logisticspipes.pipes.basic.CoreRoutedPipe;
 import logisticspipes.pipes.upgrades.UpgradeManager;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.proxy.SimpleServiceLocator;
+import logisticspipes.proxy.cc.interfaces.CCCommand;
+import logisticspipes.proxy.cc.interfaces.CCType;
 import logisticspipes.request.RequestTreeNode;
 import logisticspipes.routing.LogisticsPromise;
 import logisticspipes.security.SecuritySettings;
@@ -62,6 +66,8 @@ import logisticspipes.utils.InventoryHelper;
 import logisticspipes.utils.ItemIdentifier;
 import logisticspipes.utils.ItemIdentifierStack;
 import logisticspipes.utils.Pair3;
+import logisticspipes.utils.PlayerCollectionList;
+import logisticspipes.utils.SidedInventoryMinecraftAdapter;
 import logisticspipes.utils.SimpleInventory;
 import logisticspipes.utils.SinkReply;
 import net.minecraft.entity.player.EntityPlayer;
@@ -69,32 +75,37 @@ import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.ChatMessageComponent;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.World;
 import net.minecraftforge.common.ForgeDirection;
-import net.minecraftforge.common.ISidedInventory;
 import buildcraft.api.core.Position;
-import buildcraft.core.DefaultProps;
+import buildcraft.core.network.TileNetworkData;
 import buildcraft.transport.TileGenericPipe;
 import cpw.mods.fml.client.FMLClientHandler;
 import cpw.mods.fml.common.network.Player;
 
+@CCType(name="LogisticsChassiePipe")
 public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISimpleInventoryEventHandler, IInventoryProvider, ISendRoutedItem, IProvideItems, IWorldProvider, IHeadUpDisplayRendererProvider, ISendQueueContentRecieiver {
 
 	private final ChassiModule _module;
 	private final SimpleInventory _moduleInventory;
 	private boolean switchOrientationOnTick = true;
 	private boolean init = false;
-	BaseChassiLogic ChassiLogic;
+
+	// from baseLogicChassi
+	@TileNetworkData
+	public ForgeDirection orientation = ForgeDirection.UNKNOWN;
+
 	private boolean convertFromMeta = false;
 
 	//HUD
 	public final LinkedList<ItemIdentifierStack> displayList = new LinkedList<ItemIdentifierStack>();
-	public final List<EntityPlayer> localModeWatchers = new ArrayList<EntityPlayer>();
+	public final PlayerCollectionList localModeWatchers = new PlayerCollectionList();
 	private HUDChassiePipe HUD;
 
 	public PipeLogisticsChassi(int itemID) {
-		super(new BaseChassiLogic(), itemID);
-		ChassiLogic = (BaseChassiLogic) logic;
+		super(itemID);
 		_moduleInventory = new SimpleInventory(getChassiSize(), "Chassi pipe", 1);
 		_moduleInventory.addListener(this);
 		_module = new ChassiModule(getChassiSize(), this);
@@ -107,7 +118,7 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 			return _cachedAdjacentInventories;
 		}
 		List<IInventory> adjacent = new ArrayList<IInventory>(1);
-		IInventory adjinv = getRawInventory();
+		IInventory adjinv = getRealInventory();
 		if(adjinv != null) {
 			adjacent.add(adjinv);
 		}
@@ -116,33 +127,30 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 	}	
 	
 	public ForgeDirection getPointedOrientation(){
-		return ChassiLogic.orientation;
+		return orientation;
 	}
 
 	public TileEntity getPointedTileEntity(){
-		if(ChassiLogic.orientation == ForgeDirection.UNKNOWN) return null;
-		if(this.container.tileBuffer == null) {
-			return null;
-		}
-		return this.container.tileBuffer[ChassiLogic.orientation.ordinal()].getTile();
+		if(orientation == ForgeDirection.UNKNOWN) return null;
+		return this.getContainer().getTile(orientation);
 	}
 
 	public void nextOrientation() {
 		boolean found = false;
-		ForgeDirection oldOrientation = ChassiLogic.orientation;
+		ForgeDirection oldOrientation = orientation;
 		for (int l = 0; l < 6; ++l) {
-			ChassiLogic.orientation = ForgeDirection.values()[(ChassiLogic.orientation.ordinal() + 1) % 6];
-			if(isValidOrientation(ChassiLogic.orientation)) {
+			orientation = ForgeDirection.values()[(orientation.ordinal() + 1) % 6];
+			if(isValidOrientation(orientation)) {
 				found = true;
 				break;
 			}
 		}
 		if (!found) {
-			ChassiLogic.orientation = ForgeDirection.UNKNOWN;
+			orientation = ForgeDirection.UNKNOWN;
 		}
-		if(ChassiLogic.orientation != oldOrientation) {
+		if(orientation != oldOrientation) {
 			clearCache();
-			MainProxy.sendPacketToAllAround(xCoord, yCoord, zCoord, DefaultProps.NETWORK_UPDATE_RANGE, MainProxy.getDimensionForWorld(worldObj), new PacketPipeUpdate(NetworkConstants.PIPE_UPDATE,xCoord,yCoord,zCoord,getLogisticsNetworkPacket()).getPacket());
+			MainProxy.sendPacketToAllWatchingChunk(getX(), getZ(), MainProxy.getDimensionForWorld(getWorld()), PacketHandler.getPacket(PipeUpdate.class).setPayload(getLogisticsNetworkPacket()).setPosX(getX()).setPosY(getY()).setPosZ(getZ()));
 			refreshRender(true);
 		}
 	}
@@ -150,9 +158,9 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 	private boolean isValidOrientation(ForgeDirection connection){
 		if (connection == ForgeDirection.UNKNOWN) return false;
 		if (getRouter().isRoutedExit(connection)) return false;
-		Position pos = new Position(xCoord, yCoord, zCoord, connection);
+		Position pos = new Position(getX(), getY(), getZ(), connection);
 		pos.moveForwards(1.0);
-		TileEntity tile = worldObj.getBlockTileEntity((int)pos.x, (int)pos.y, (int)pos.z);
+		TileEntity tile = getWorld().getBlockTileEntity((int)pos.x, (int)pos.y, (int)pos.z);
 
 		if (tile == null) return false;
 		if (tile instanceof TileGenericPipe) return false;
@@ -175,7 +183,7 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 
 	@Override
 	public TextureType getNonRoutedTexture(ForgeDirection connection) {
-		if (connection.equals(ChassiLogic.orientation)){
+		if (connection.equals(orientation)){
 			return Textures.LOGISTICSPIPE_CHASSI_DIRECTION_TEXTURE;
 		}
 		return Textures.LOGISTICSPIPE_CHASSI_NOTROUTED_TEXTURE;
@@ -183,8 +191,8 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 
 	@Override
 	public void onNeighborBlockChange_Logistics() {
-		if (!isValidOrientation(ChassiLogic.orientation)){
-			if(MainProxy.isServer(this.worldObj)) {
+		if (!isValidOrientation(orientation)){
+			if(MainProxy.isServer(this.getWorld())) {
 				nextOrientation();
 			}
 		}
@@ -199,39 +207,68 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 
 	/*** IInventoryProvider ***/
 
+
 	@Override
-	public IInventory getRawInventory() {
+	public IInventoryUtil getPointedInventory(boolean forExtraction) {
+		return getSneakyInventory(this.getPointedOrientation().getOpposite(), forExtraction);
+	}
+
+	@Override
+	public IInventoryUtil getPointedInventory(ExtractionMode mode, boolean forExtraction) {
+		IInventory inv = getRealInventory();
+		if(inv == null) return null;
+		if (inv instanceof net.minecraft.inventory.ISidedInventory) inv = new SidedInventoryMinecraftAdapter((net.minecraft.inventory.ISidedInventory) inv, this.getPointedOrientation().getOpposite(), forExtraction);
+		switch(mode){
+			case LeaveFirst:
+				return SimpleServiceLocator.inventoryUtilFactory.getHidingInventoryUtil(inv, false, false, 1, 0);
+			case LeaveLast:
+				return SimpleServiceLocator.inventoryUtilFactory.getHidingInventoryUtil(inv, false, false, 0, 1);
+			case LeaveFirstAndLast:
+				return SimpleServiceLocator.inventoryUtilFactory.getHidingInventoryUtil(inv, false, false, 1, 1);
+			case Leave1PerStack:
+				return SimpleServiceLocator.inventoryUtilFactory.getHidingInventoryUtil(inv, true, false, 0, 0);
+			case Leave1PerType:
+				return SimpleServiceLocator.inventoryUtilFactory.getHidingInventoryUtil(inv, false, true, 0, 0);
+			default:
+				break;
+		}
+		return SimpleServiceLocator.inventoryUtilFactory.getHidingInventoryUtil(inv, false, false, 0, 0);
+	}
+
+	@Override
+	public IInventoryUtil getSneakyInventory(boolean forExtraction) {
+		UpgradeManager manager = getUpgradeManager();
+		ForgeDirection insertion = this.getPointedOrientation().getOpposite();
+		if(manager.hasSneakyUpgrade()) {
+			insertion = manager.getSneakyOrientation();
+		}
+		return getSneakyInventory(insertion, forExtraction);
+	}
+
+	@Override
+	public IInventoryUtil getSneakyInventory(ForgeDirection _sneakyOrientation, boolean forExtraction) {
+		IInventory inv = getRealInventory();
+		if(inv == null) return null;
+		if (inv instanceof net.minecraft.inventory.ISidedInventory) inv = new SidedInventoryMinecraftAdapter((net.minecraft.inventory.ISidedInventory) inv, _sneakyOrientation, forExtraction);
+		return SimpleServiceLocator.inventoryUtilFactory.getInventoryUtil(inv);
+	}
+
+	@Override
+	public IInventoryUtil getUnsidedInventory() {
+		IInventory inv = getRealInventory();
+		if(inv == null) return null;
+		return SimpleServiceLocator.inventoryUtilFactory.getInventoryUtil(inv);
+	}
+
+	@Override
+	public IInventory getRealInventory() {
 		TileEntity tile = getPointedTileEntity();
 		if (tile == null ) return null;
 		if (tile instanceof TileGenericPipe) return null;
 		if (!(tile instanceof IInventory)) return null;
 		return InventoryHelper.getInventory((IInventory) tile);
 	}
-
-	@Override
-	public IInventory getPointedInventory() {
-		IInventory rawInventory = getRawInventory();
-		if (rawInventory instanceof ISidedInventory) return new SidedInventoryAdapter((ISidedInventory) rawInventory, this.getPointedOrientation().getOpposite());
-		return rawInventory;
-	}
-
-	@Override
-	public IInventory getSneakyInventory() {
-		UpgradeManager manager = getUpgradeManager();
-		ForgeDirection insertion = this.getPointedOrientation().getOpposite();
-		if(manager.hasSneakyUpgrade()) {
-			insertion = manager.getSneakyOrientation();
-		}
-		return getSneakyInventory(insertion);
-	}
 	
-	@Override
-	public IInventory getSneakyInventory(ForgeDirection insertion) {
-		IInventory rawInventory = getRawInventory();
-		if (rawInventory instanceof ISidedInventory) return new SidedInventoryAdapter((ISidedInventory) rawInventory, insertion);
-		return rawInventory;
-	}
-
 	@Override
 	public ForgeDirection inventoryOrientation() {
 		return getPointedOrientation();
@@ -250,7 +287,7 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 
 	@Override
 	public void sendStack(ItemStack stack, Pair3<Integer, SinkReply, List<IFilter>> reply, ItemSendMode mode) {
-		IRoutedItem itemToSend = SimpleServiceLocator.buildCraftProxy.CreateRoutedItem(stack, this.worldObj);
+		IRoutedItem itemToSend = SimpleServiceLocator.buildCraftProxy.CreateRoutedItem(this.container, stack);
 		itemToSend.setDestination(reply.getValue1());
 		if (reply.getValue2().isPassive){
 			if (reply.getValue2().isDefault){
@@ -271,7 +308,7 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 
 	@Override
 	public void sendStack(ItemStack stack, int destination, ItemSendMode mode, List<IRelayItem> relays) {
-		IRoutedItem itemToSend = SimpleServiceLocator.buildCraftProxy.CreateRoutedItem(stack, this.worldObj);
+		IRoutedItem itemToSend = SimpleServiceLocator.buildCraftProxy.CreateRoutedItem(this.container, stack);
 		itemToSend.setDestination(destination);
 		itemToSend.setTransportMode(TransportMode.Active);
 		itemToSend.addRelayPoints(relays);
@@ -286,11 +323,11 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 			_moduleInventory.readFromNBT(nbttagcompound, "chassi");
 			InventoryChanged(_moduleInventory);
 			_module.readFromNBT(nbttagcompound);
-			ChassiLogic.orientation = ForgeDirection.values()[nbttagcompound.getInteger("Orientation") % 7];
+			orientation = ForgeDirection.values()[nbttagcompound.getInteger("Orientation") % 7];
 			if(nbttagcompound.getInteger("Orientation") == 0) {
 				convertFromMeta = true;
 			}
-			switchOrientationOnTick = (ChassiLogic.orientation == ForgeDirection.UNKNOWN);
+			switchOrientationOnTick = (orientation == ForgeDirection.UNKNOWN);
 		} catch(Exception e) {
 			e.printStackTrace();
 		}
@@ -301,16 +338,15 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 		super.writeToNBT(nbttagcompound);
 		_moduleInventory.writeToNBT(nbttagcompound, "chassi");
 		_module.writeToNBT(nbttagcompound);
-		nbttagcompound.setInteger("Orientation", ChassiLogic.orientation.ordinal());
+		nbttagcompound.setInteger("Orientation", orientation.ordinal());
 	}
 
 	@Override
-	public void onBlockRemoval() {
-		super.onBlockRemoval();
+	public void onAllowedRemoval() {
 		_moduleInventory.removeListener(this);
-		if(MainProxy.isServer(this.worldObj)) {
+		if(MainProxy.isServer(this.getWorld())) {
 			for (int i = 0; i < this.getChassiSize(); i++){
-				ILogisticsModule x = _module.getSubModule(i);
+				LogisticsModule x = _module.getSubModule(i);
 				if (x instanceof ILegacyActiveModule) {
 					ILegacyActiveModule y = (ILegacyActiveModule)x;
 					y.onBlockRemoval();
@@ -321,7 +357,7 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 					ItemModuleInformationManager.saveInfotmation(_moduleInventory.getStackInSlot(i), this.getLogisticsModule().getSubModule(i));
 				}
 			}
-			_moduleInventory.dropContents(this.worldObj, this.xCoord, this.yCoord, this.zCoord);
+			_moduleInventory.dropContents(this.getWorld(), getX(), getY(), getZ());
 		}
 	}
 
@@ -339,9 +375,9 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 			}
 
 			if (stack.getItem() instanceof ItemModule){
-				ILogisticsModule current = _module.getModule(i);
-				ILogisticsModule next = ((ItemModule)stack.getItem()).getModuleForItem(stack, _module.getModule(i), this, this, this, this);
-				next.registerPosition(xCoord, yCoord, zCoord, i);
+				LogisticsModule current = _module.getModule(i);
+				LogisticsModule next = ((ItemModule)stack.getItem()).getModuleForItem(stack, _module.getModule(i), this, this, this, this);
+				next.registerSlot(i);
 				if (current != next){
 					_module.installModule(i, next);
 					if(!MainProxy.isClient()) {
@@ -349,24 +385,26 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 					}
 					ItemModuleInformationManager.removeInformation(stack);
 				}
+				inventory.setInventorySlotContents(i,stack);
 			}
 		}
 		if (reInitGui) {
-			if(MainProxy.isClient(this.worldObj)) {
+			if(MainProxy.isClient(this.getWorld())) {
 				if (FMLClientHandler.instance().getClient().currentScreen instanceof GuiChassiPipe){
 					FMLClientHandler.instance().getClient().currentScreen.initGui();
 				}
 			}
 		}
 		if(MainProxy.isServer()) {
-			MainProxy.sendToPlayerList(new PacketPipeInvContent(NetworkConstants.CHASSIE_PIPE_MODULE_CONTENT, xCoord, yCoord, zCoord, ItemIdentifierStack.getListFromInventory(_moduleInventory)).getPacket(), localModeWatchers);
+//TODO 		MainProxy.sendToPlayerList(new PacketPipeInvContent(NetworkConstants.CHASSIE_PIPE_MODULE_CONTENT, getX(), getY(), getZ(), ItemIdentifierStack.getListFromInventory(_moduleInventory)).getPacket(), localModeWatchers);
+			//MainProxy.sendToPlayerList(PacketHandler.getPacket(ChassiePipeModuleContent.class).setIdentList(ItemIdentifierStack.getListFromInventory(_moduleInventory)).setPosX(getX()).setPosY(getY()).setPosZ(getZ()), localModeWatchers);
 			//register earlier provider modules with later ones, needed for the "who is the first whose filter allows that item" check
 			List<ILegacyActiveModule> prevModules = new LinkedList<ILegacyActiveModule>();
 			for (int i = 0; i < this.getChassiSize(); i++){
-				ILogisticsModule x = _module.getSubModule(i);
+				LogisticsModule x = _module.getSubModule(i);
 				if (x instanceof ILegacyActiveModule) {
 					ILegacyActiveModule y = (ILegacyActiveModule)x;
-					y.registerPreviousLegacyModules(new ArrayList(prevModules));
+					y.registerPreviousLegacyModules(new ArrayList<ILegacyActiveModule>(prevModules));
 					prevModules.add(y);
 				}
 			}
@@ -377,19 +415,20 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 	public void ignoreDisableUpdateEntity() {
 		if (switchOrientationOnTick){
 			switchOrientationOnTick = false;
-			if(MainProxy.isServer(this.worldObj)) {
+			if(MainProxy.isServer(this.getWorld())) {
 				nextOrientation();
 			}
 		}
-		if(convertFromMeta && worldObj.getBlockMetadata(xCoord, yCoord, zCoord) != 0) {
-			ChassiLogic.orientation = ForgeDirection.values()[worldObj.getBlockMetadata(xCoord, yCoord, zCoord) % 6];
-			worldObj.setBlockMetadataWithNotify(xCoord, yCoord, zCoord, 0,0);
+		if(convertFromMeta && getWorld().getBlockMetadata(getX(), getY(), getZ()) != 0) {
+			orientation = ForgeDirection.values()[getWorld().getBlockMetadata(getX(), getY(), getZ()) % 6];
+			getWorld().setBlockMetadataWithNotify(getX(), getY(), getZ(), 0,0);
 			convertFromMeta=false;
 		}
 		if(!init) {
 			init = true;
-			if(MainProxy.isClient(this.worldObj)) {
-				MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.REQUEST_PIPE_UPDATE, xCoord, yCoord, zCoord).getPacket());
+			if(MainProxy.isClient(this.getWorld())) {
+//TODO 			MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.REQUEST_PIPE_UPDATE, getX(), getY(), getZ()).getPacket());
+				MainProxy.sendPacketToServer(PacketHandler.getPacket(RequestPipeUpdatePacket.class).setPosX(getX()).setPosY(getY()).setPosZ(getZ()));
 			}
 		}
 	}
@@ -397,7 +436,7 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 	public abstract int getChassiSize();
 
 	@Override
-	public final ILogisticsModule getLogisticsModule() {
+	public final LogisticsModule getLogisticsModule() {
 		return _module;
 	}
 
@@ -422,26 +461,26 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 	}
 
 	@Override
-	public boolean handleClick(World world, int x, int y, int z, EntityPlayer entityplayer, SecuritySettings settings) {
+	public boolean handleClick(EntityPlayer entityplayer, SecuritySettings settings) {
 		if (entityplayer.getCurrentEquippedItem() == null) return false;
 
 		if (SimpleServiceLocator.buildCraftProxy.isWrenchEquipped(entityplayer) && entityplayer.isSneaking()) {
-			if(MainProxy.isServer(world)) {
+			if(MainProxy.isServer(getWorld())) {
 				if (settings == null || settings.openGui) {
 					((PipeLogisticsChassi)this.container.pipe).nextOrientation();
 				} else {
-					entityplayer.sendChatToPlayer("Permission denied");
+					entityplayer.sendChatToPlayer(ChatMessageComponent.func_111066_d("Permission denied"));
 				}
 			}
 			return true;
 		}
 		
 		if(!entityplayer.isSneaking() && entityplayer.getCurrentEquippedItem().itemID == LogisticsPipes.ModuleItem.itemID && entityplayer.getCurrentEquippedItem().getItemDamage() != ItemModule.BLANK) {
-			if(MainProxy.isServer(world)) {
+			if(MainProxy.isServer(getWorld())) {
 				if (settings == null || settings.openGui) {
 					return tryInsertingModule(entityplayer);
 				} else {
-					entityplayer.sendChatToPlayer("Permission denied");
+					entityplayer.sendChatToPlayer(ChatMessageComponent.func_111066_d("Permission denied"));
 				}
 			}
 			return true;
@@ -460,7 +499,7 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 			if(filter.isBlocked() == filter.isFilteredItem(tree.getStackItem().getUndamaged()) || filter.blockProvider()) return;
 		}
 		for (int i = 0; i < this.getChassiSize(); i++){
-			ILogisticsModule x = _module.getSubModule(i);
+			LogisticsModule x = _module.getSubModule(i);
 			if (x instanceof ILegacyActiveModule){
 				ILegacyActiveModule y = (ILegacyActiveModule)x;
 				if(y.filterAllowsItem(tree.getStackItem())) {
@@ -477,12 +516,12 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 			return;
 		}
 		for (int i = 0; i < this.getChassiSize(); i++){
-			ILogisticsModule x = _module.getSubModule(i);
+			LogisticsModule x = _module.getSubModule(i);
 			if (x instanceof ILegacyActiveModule){
 				ILegacyActiveModule y = (ILegacyActiveModule)x;
 				if(y.filterAllowsItem(promise.item)) {
 					y.fullFill(promise, destination);
-					MainProxy.sendSpawnParticlePacket(Particles.WhiteParticle, xCoord, yCoord, zCoord, this.worldObj, 2);
+					MainProxy.sendSpawnParticlePacket(Particles.WhiteParticle, getX(), getY(), getZ(), this.getWorld(), 2);
 					return;
 				}
 			}
@@ -495,7 +534,7 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 			return;
 		}
 		for (int i = 0; i < this.getChassiSize(); i++){
-			ILogisticsModule x = _module.getSubModule(i);
+			LogisticsModule x = _module.getSubModule(i);
 			if (x instanceof ILegacyActiveModule) {
 				ILegacyActiveModule y = (ILegacyActiveModule)x;
 				y.getAllItems(list, filter);
@@ -509,38 +548,20 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 	}
 
 	@Override
-	public World getWorld() {
-		return this.worldObj;
-	}
-
-	@Override
 	public IHeadUpDisplayRenderer getRenderer() {
 		return HUD;
 	}
 
 	@Override
-	public int getX() {
-		return xCoord;
+	public void startWatching() {
+//TODO 	MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_START_WATCHING, getX(), getY(), getZ(), 1).getPacket());
+		MainProxy.sendPacketToServer(PacketHandler.getPacket(HUDStartWatchingPacket.class).setInteger(1).setPosX(getX()).setPosY(getY()).setPosZ(getZ()));
 	}
 
 	@Override
-	public int getY() {
-		return yCoord;
-	}
-
-	@Override
-	public int getZ() {
-		return zCoord;
-	}
-
-	@Override
-	public void startWaitching() {
-		MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_START_WATCHING, xCoord, yCoord, zCoord, 1).getPacket());
-	}
-
-	@Override
-	public void stopWaitching() {
-		MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_STOP_WATCHING, xCoord, yCoord, zCoord, 1).getPacket());
+	public void stopWatching() {
+//TODO 	MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_STOP_WATCHING, getX(), getY(), getZ(), 1).getPacket());
+		MainProxy.sendPacketToServer(PacketHandler.getPacket(HUDStopWatchingPacket.class).setInteger(1).setPosX(getX()).setPosY(getY()).setPosZ(getZ()));
 		HUD.stopWatching();
 	}
 
@@ -548,8 +569,10 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 	public void playerStartWatching(EntityPlayer player, int mode) {
 		if(mode == 1) {
 			localModeWatchers.add(player);
-			MainProxy.sendPacketToPlayer(new PacketPipeInvContent(NetworkConstants.CHASSIE_PIPE_MODULE_CONTENT, xCoord, yCoord, zCoord, ItemIdentifierStack.getListFromInventory(_moduleInventory)).getPacket(), (Player)player);
-			MainProxy.sendPacketToPlayer(new PacketPipeInvContent(NetworkConstants.SEND_QUEUE_CONTENT, xCoord, yCoord, zCoord, ItemIdentifierStack.getListSendQueue(_sendQueue)).getPacket(), (Player)player);
+//TODO 		MainProxy.sendPacketToPlayer(new PacketPipeInvContent(NetworkConstants.CHASSIE_PIPE_MODULE_CONTENT, getX(), getY(), getZ(), ItemIdentifierStack.getListFromInventory(_moduleInventory)).getPacket(), (Player)player);
+			MainProxy.sendPacketToPlayer(PacketHandler.getPacket(ChassiePipeModuleContent.class).setIdentList(ItemIdentifierStack.getListFromInventory(_moduleInventory)).setPosX(getX()).setPosY(getY()).setPosZ(getZ()), (Player)player);
+//TODO 		MainProxy.sendPacketToPlayer(new PacketPipeInvContent(NetworkConstants.SEND_QUEUE_CONTENT, getX(), getY(), getZ(), ItemIdentifierStack.getListSendQueue(_sendQueue)).getPacket(), (Player)player);
+			MainProxy.sendPacketToPlayer(PacketHandler.getPacket(SendQueueContent.class).setIdentList(ItemIdentifierStack.getListSendQueue(_sendQueue)).setPosX(getX()).setPosY(getY()).setPosZ(getZ()), (Player)player);
 		} else {
 			super.playerStartWatching(player, mode);
 		}
@@ -571,13 +594,14 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 
 	@Override
 	public int sendQueueChanged(boolean force) {
-		if(MainProxy.isServer(this.worldObj)) {
+		if(MainProxy.isServer(this.getWorld())) {
 			if(Configs.MULTI_THREAD_NUMBER > 0 && !force) {
 				HudUpdateTick.add(getRouter());
 			} else {
 				if(localModeWatchers != null && localModeWatchers.size()>0) {
 					LinkedList<ItemIdentifierStack> items = ItemIdentifierStack.getListSendQueue(_sendQueue);				
-					MainProxy.sendCompressedToPlayerList(new PacketPipeInvContent(NetworkConstants.SEND_QUEUE_CONTENT, xCoord, yCoord, zCoord, items).getPacket(), localModeWatchers);
+//TODO 				MainProxy.sendCompressedToPlayerList(new PacketPipeInvContent(NetworkConstants.SEND_QUEUE_CONTENT, getX(), getY(), getZ(), items).getPacket(), localModeWatchers);
+					MainProxy.sendToPlayerList(PacketHandler.getPacket(SendQueueContent.class).setIdentList(items).setPosX(getX()).setPosY(getY()).setPosZ(getZ()), localModeWatchers);
 					return items.size();
 				}
 			}
@@ -599,9 +623,9 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 	public void setTile(TileEntity tile) {
 		super.setTile(tile);
 		for (int i = 0; i < _moduleInventory.getSizeInventory(); i++){
-			ILogisticsModule current = _module.getModule(i);
+			LogisticsModule current = _module.getModule(i);
 			if(current != null) {
-				current.registerPosition(xCoord, yCoord, zCoord, i);
+				current.registerSlot(i);
 			}
 		}
 	}
@@ -615,13 +639,13 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 	public Set<ItemIdentifier> getSpecificInterests() {
 		Set<ItemIdentifier> l1 = new TreeSet<ItemIdentifier>();
 		//if we don't have a pointed inventory we can't be interested in anything
-		if(getRawInventory() == null) return l1;
+		if(getRealInventory() == null) return l1;
 		for (int moduleIndex = 0; moduleIndex < this.getChassiSize(); moduleIndex++){
-			ILogisticsModule module = _module.getSubModule(moduleIndex);
+			LogisticsModule module = _module.getSubModule(moduleIndex);
 			if(module!=null && module.interestedInAttachedInventory()) {
-				IInventory inv = getRawInventory();
-				if (inv instanceof ISidedInventory) {
-					inv = new SidedInventoryAdapter((ISidedInventory) inv, ForgeDirection.UNKNOWN);
+				IInventory inv = getRealInventory();
+				if(inv instanceof net.minecraft.inventory.ISidedInventory) {
+					inv = new SidedInventoryMinecraftAdapter((net.minecraft.inventory.ISidedInventory)inv, ForgeDirection.UNKNOWN,false);
 				}
 				Set<ItemIdentifier> items = SimpleServiceLocator.inventoryUtilFactory.getInventoryUtil(inv).getItems();
 				l1.addAll(items);
@@ -647,7 +671,7 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 			} 
 		}
 		for (int i = 0; i < this.getChassiSize(); i++){
-			ILogisticsModule module = _module.getSubModule(i);
+			LogisticsModule module = _module.getSubModule(i);
 			if(module!=null) {
 				Collection<ItemIdentifier> current = module.getSpecificInterests();
 				if(current!=null)
@@ -659,13 +683,26 @@ public abstract class PipeLogisticsChassi extends CoreRoutedPipe implements ISim
 
 	@Override
 	public boolean hasGenericInterests() {
-		if(getRawInventory() == null) return false;
+		if(getRealInventory() == null) return false;
 		for (int i = 0; i < this.getChassiSize(); i++){
-			ILogisticsModule x = _module.getSubModule(i);
+			LogisticsModule x = _module.getSubModule(i);
 			
 			if(x!=null && x.hasGenericInterests())
 				return true;			
 		}
 		return false;
 	}
+	
+	@CCCommand(description="Returns the LogisticsModule for the givven slot number starting by 1")
+	public LogisticsModule getModule(Double i) {
+		return _module.getSubModule((int) (i - 1));
+	}
+	
+	@CCCommand(description="Returns the size of this Chassie pipe")
+	public Integer getChassieSize() {
+		return this.getChassiSize();
+	}
+	private static final ResourceLocation TEXTURE = new ResourceLocation("logisticspipes", "textures/gui/chassipipe_size1.png");
+
+	public abstract ResourceLocation getChassiGUITexture() ;
 }

@@ -16,7 +16,8 @@ import net.minecraft.client.renderer.RenderBlocks;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.entity.RenderItem;
 import net.minecraft.item.ItemStack;
-import net.minecraft.src.ModLoader;
+import net.minecraft.util.Icon;
+import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.ForgeHooksClient;
 
 import org.lwjgl.input.Keyboard;
@@ -66,6 +67,7 @@ public class BasicGuiHelper {
 	}
 
 	public static void renderItemIdentifierStackListIntoGui(List<ItemIdentifierStack> _allItems, IItemSearch IItemSearch, int page, int left , int top, int columns, int items, int xSize, int ySize, Minecraft mc, boolean displayAmount, boolean forcenumber, boolean color, boolean disableEffect) {
+		GL11.glPushMatrix();
 		int ppi = 0;
 		int column = 0;
 		int row = 0;
@@ -94,7 +96,7 @@ public class BasicGuiHelper {
 			int y = top + ySize * row;
 
 			GL11.glDisable(2896 /*GL_LIGHTING*/);
-			//GL11.glDisable(2929 /*GL_DEPTH_TEST*/);	
+			//GL11.glDisable(2929 /*GL_DEPTH_TEST*/);
 			
 			if(st != null && itemStack.getItem().isValid()) {
 				if(disableEffect) {
@@ -107,7 +109,9 @@ public class BasicGuiHelper {
 			        }
 
 				} else {
+					GL11.glTranslated(0, 0, 3.0);
 					renderItem.renderItemAndEffectIntoGUI(fontRenderer, mc.renderEngine, st, x, y);
+					GL11.glTranslated(0, 0, -3.0);
 				}
 			}
 			
@@ -149,6 +153,7 @@ public class BasicGuiHelper {
 			}
 		}
 		GL11.glDisable(2896 /*GL_LIGHTING*/);
+		GL11.glPopMatrix();
 	}
 	
 
@@ -257,7 +262,7 @@ public class BasicGuiHelper {
 	                
 	                for (var11 = 0; var11 < var24.size(); ++var11)
 	                {
-	                    var12 = ModLoader.getMinecraftInstance().fontRenderer.getStringWidth(var24.get(var11));
+	                    var12 = FMLClientHandler.instance().getClient().fontRenderer.getStringWidth(var24.get(var11));
 
 	                    if (var12 > var10)
 	                    {
@@ -303,7 +308,7 @@ public class BasicGuiHelper {
 	                        var19 = "\u00a77" + var19;
 	                    }
 
-	                    ModLoader.getMinecraftInstance().fontRenderer.drawStringWithShadow(var19, var11, var12, -1);
+	                    FMLClientHandler.instance().getClient().fontRenderer.drawStringWithShadow(var19, var11, var12, -1);
 	        	        
 	                    if (var18 == 0)
 	                    {
@@ -397,10 +402,12 @@ public class BasicGuiHelper {
         	drawSlotBackground(mc, xOffset + i1 * 18 - 1, yOffset - 1);
         }
 	}
-
+	
+	private static final ResourceLocation SLOT = new ResourceLocation("logisticspipes", "textures/gui/slot.png");
+	
     public static void drawSlotBackground(Minecraft mc, int x, int y) {
 		GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-		mc.renderEngine.bindTexture("/logisticspipes/gui/slot.png");
+		mc.renderEngine.func_110577_a(SLOT);
 		
 		Tessellator var9 = Tessellator.instance;
         var9.startDrawingQuads();
@@ -410,10 +417,13 @@ public class BasicGuiHelper {
         var9.addVertexWithUV(x		, y			, zLevel, 0	, 0);
         var9.draw();
     }
-    
+	
+	private static final ResourceLocation BIGSLOT = new ResourceLocation("logisticspipes", "textures/gui/slot-big.png");
+	
+
     public static void drawBigSlotBackground(Minecraft mc, int x, int y) {
 		GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-		mc.renderEngine.bindTexture("/logisticspipes/gui/slot-big.png");
+		mc.renderEngine.func_110577_a(BIGSLOT);
 		
 		Tessellator var9 = Tessellator.instance;
         var9.startDrawingQuads();
@@ -424,10 +434,11 @@ public class BasicGuiHelper {
         var9.draw();
     }
     
-
+	private static final ResourceLocation SMALLSLOT = new ResourceLocation("logisticspipes", "textures/gui/slot-small.png");
+	
     public static void drawSmallSlotBackground(Minecraft mc, int x, int y) {
 		GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-		mc.renderEngine.bindTexture("/logisticspipes/gui/slot-small.png");
+		mc.renderEngine.func_110577_a(SMALLSLOT);
 		
 		Tessellator var9 = Tessellator.instance;
         var9.startDrawingQuads();
@@ -437,63 +448,62 @@ public class BasicGuiHelper {
         var9.addVertexWithUV(x		, y			, zLevel, 0	, 0);
         var9.draw();
     }
-    
-    public static void renderIconAt(Minecraft mc, int x, int y, float zLevel, int iconIndex, String textureFile) {
-		int i = mc.renderEngine.getTexture(textureFile);
+	
+	private static final ResourceLocation ITEMS = new ResourceLocation("textures/gui/icons.png");
+	
+
+    public static void renderIconAt(Minecraft mc, int x, int y, float zLevel, Icon icon) {
+    	if(icon == null) return;
 		GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-		mc.renderEngine.bindTexture(textureFile);
-		
-		double iconX = ((double)((iconIndex % 16) * 16)) / 256;
-		double iconXright = ((double)(((iconIndex % 16) + 1) * 16)) / 256;
-		double iconY = ((double)((iconIndex / 16) * 16)) / 256;
-		double iconYbottom = ((double)(((iconIndex / 16) + 1) * 16)) / 256;
+    	mc.renderEngine.func_110577_a(ITEMS);
 		
 		Tessellator var9 = Tessellator.instance;
         var9.startDrawingQuads();
-        var9.addVertexWithUV(x		, y + 16	, zLevel, iconX			, iconYbottom);
-        var9.addVertexWithUV(x + 16	, y + 16	, zLevel, iconXright	, iconYbottom);
-        var9.addVertexWithUV(x + 16	, y			, zLevel, iconXright	, iconY);
-        var9.addVertexWithUV(x		, y			, zLevel, iconX			, iconY);
+        var9.addVertexWithUV(x		, y + 16	, zLevel, icon.getMinU()	, icon.getMaxV());
+        var9.addVertexWithUV(x + 16	, y + 16	, zLevel, icon.getMaxU()	, icon.getMaxV());
+        var9.addVertexWithUV(x + 16	, y			, zLevel, icon.getMaxU()	, icon.getMinV());
+        var9.addVertexWithUV(x		, y			, zLevel, icon.getMinU()	, icon.getMinV());
         var9.draw();
 	}
     
     public static void renderForestryBeeAt(Minecraft mc, int x, int y, float zLevel, String id) {
-		//GL11.glDisable(2896 /*Light*/);
-		mc.renderEngine.bindTexture("/gfx/forestry/items/bees.png");
-		
+    	GL11.glDisable(GL11.GL_LIGHTING);
+    	mc.renderEngine.func_110577_a(ITEMS);
+    	
 		for (int i = 0; i < SimpleServiceLocator.forestryProxy.getRenderPassesForAlleleId(id); i++) {
-			int iconIndex = SimpleServiceLocator.forestryProxy.getIconIndexForAlleleId(id, i);
+			Icon icon = SimpleServiceLocator.forestryProxy.getIconIndexForAlleleId(id, i);
+			if(icon == null) continue;
 	        int color = SimpleServiceLocator.forestryProxy.getColorForAlleleId(id, i);
 	        float colorR = (color >> 16 & 0xFF) / 255.0F;
 	        float colorG = (color >> 8 & 0xFF) / 255.0F;
 	        float colorB = (color & 0xFF) / 255.0F;
 
 	        GL11.glColor4f(colorR, colorG, colorB, 1.0F);
-			//Render Icon
-			double iconX = ((double)((iconIndex % 16) * 16)) / 256;
-			double iconXright = ((double)(((iconIndex % 16) + 1) * 16)) / 256;
-			double iconY = ((double)((iconIndex / 16) * 16)) / 256;
-			double iconYbottom = ((double)(((iconIndex / 16) + 1) * 16)) / 256;
 			
+	        //Render Icon
 			Tessellator var9 = Tessellator.instance;
 	        var9.startDrawingQuads();
-	        var9.addVertexWithUV(x		, y + 16	, zLevel, iconX			, iconYbottom);
-	        var9.addVertexWithUV(x + 16	, y + 16	, zLevel, iconXright	, iconYbottom);
-	        var9.addVertexWithUV(x + 16	, y			, zLevel, iconXright	, iconY);
-	        var9.addVertexWithUV(x		, y			, zLevel, iconX			, iconY);
+	        var9.addVertexWithUV(x		, y + 16	, zLevel, icon.getMinU()	, icon.getMaxV());
+	        var9.addVertexWithUV(x + 16	, y + 16	, zLevel, icon.getMaxU()	, icon.getMaxV());
+	        var9.addVertexWithUV(x + 16	, y			, zLevel, icon.getMaxU()	, icon.getMinV());
+	        var9.addVertexWithUV(x		, y			, zLevel, icon.getMinU()	, icon.getMinV());
 	        var9.draw();
-	      }
+		}
+		GL11.glEnable(GL11.GL_LIGHTING);
 	}
     
     public static void drawGuiBackGround(Minecraft mc, int guiLeft, int guiTop, int right, int bottom, float zLevel, boolean flag){
     	drawGuiBackGround(mc, guiLeft, guiTop, right, bottom, zLevel, flag, true, true, true, true);
     }
-    
+	
+	private static final ResourceLocation BACKGROUND = new ResourceLocation("logisticspipes", "textures/gui/GuiBackground.png");
+	
+
     public static void drawGuiBackGround(Minecraft mc, int guiLeft, int guiTop, int right, int bottom, float zLevel, boolean flag, boolean displayTop, boolean displayLeft, boolean displayBottom, boolean displayRight){
 		if(flag) {
 			GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
 		}
-		mc.renderEngine.bindTexture("/logisticspipes/gui/GuiBackground.png");
+		mc.renderEngine.func_110577_a(BACKGROUND);
 		
 		if(displayTop) {
 			//Top Side

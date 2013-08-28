@@ -6,7 +6,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityClientPlayerMP;
 import net.minecraft.client.particle.EntityFX;
 import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.World;
+
 import org.lwjgl.opengl.GL11;
 
 public class EntitySparkleFX extends EntityFX
@@ -20,10 +22,9 @@ public class EntitySparkleFX extends EntityFX
     public EntitySparkleFX(World var1, double var2, double var4, double var6, float var8, float var9, float var10, float var11, int var12)
     {
         super(var1, var2, var4, var6, 0.0D, 0.0D, 0.0D);
-        this.multiplier = 4;
         this.shrink = false;
         this.particle = 0;
-        this.tinkle = true;
+        this.tinkle = false;
         this.blendmode = 1;
 
         if (var9 == 0.0F)
@@ -37,7 +38,7 @@ public class EntitySparkleFX extends EntityFX
         this.particleGravity = 0.0F;
         this.motionX = this.motionY = this.motionZ = 0.0D;
         this.particleScale *= var8;
-        this.particleMaxAge = 2 * var12;
+        this.particleMaxAge = 2 * var12 - 1;
         this.multiplier = var12;
         this.noClip = true;
     }
@@ -108,6 +109,9 @@ public class EntitySparkleFX extends EntityFX
         this.motionY = var19 / this.particleMaxAge;
         this.motionZ = var21 / this.particleMaxAge;
     }
+	
+	private static final ResourceLocation TEXTURE = new ResourceLocation("logisticspipes", "textures/particles/particles.png");
+	
 
     @Override
 	public void renderParticle(Tessellator var1, float var2, float var3, float var4, float var5, float var6, float var7)
@@ -117,7 +121,7 @@ public class EntitySparkleFX extends EntityFX
         GL11.glDepthMask(false);
         GL11.glEnable(GL11.GL_BLEND);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, this.blendmode);
-        Minecraft.getMinecraft().renderEngine.bindTexture("/logisticspipes/particles/particles.png");
+        Minecraft.getMinecraft().renderEngine.func_110577_a(TEXTURE);
         GL11.glColor4f(1.0F, 1.0F, 1.0F, 0.75F);
         int var8 = this.particle + this.particleAge / this.multiplier;
         float var9 = var8 % 8 / 8.0F;
@@ -140,7 +144,7 @@ public class EntitySparkleFX extends EntityFX
         GL11.glDisable(GL11.GL_BLEND);
         GL11.glDepthMask(true);
         GL11.glPopMatrix();
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, Minecraft.getMinecraft().renderEngine.getTexture("/particles.png"));
+        Minecraft.getMinecraft().renderEngine.func_110577_a(TEXTURE);//TODO: check -- was "/particles.png");, now LP-particles
         var1.startDrawingQuads();
     }
 

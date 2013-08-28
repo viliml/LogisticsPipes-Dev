@@ -1,6 +1,10 @@
 package logisticspipes.modules;
 
 import logisticspipes.pipes.basic.CoreRoutedPipe.ItemSendMode;
+import net.minecraft.client.renderer.texture.IconRegister;
+import net.minecraft.util.Icon;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 
 
 public class ModuleExtractorMk3 extends ModuleExtractorMk2 {
@@ -27,5 +31,11 @@ public class ModuleExtractorMk3 extends ModuleExtractorMk2 {
 	@Override
 	protected ItemSendMode itemSendMode() {
 		return ItemSendMode.Fast;
+	}
+
+	@Override
+	@SideOnly(Side.CLIENT)
+	public Icon getIconTexture(IconRegister register) {
+		return register.registerIcon("logisticspipes:itemModule/ModuleExtractorMk3");
 	}
 }

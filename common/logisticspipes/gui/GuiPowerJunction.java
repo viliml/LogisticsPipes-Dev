@@ -1,22 +1,23 @@
 package logisticspipes.gui;
 
 import logisticspipes.LogisticsPipes;
-import logisticspipes.blocks.powertile.LogisticsPowerJuntionTileEntity_BuildCraft;
+import logisticspipes.blocks.powertile.LogisticsPowerJunctionTileEntity;
 import logisticspipes.network.GuiIDs;
-import logisticspipes.network.NetworkConstants;
-import logisticspipes.network.packets.PacketCoordinates;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.block.PowerJunctionCheatPacket;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.utils.gui.KraphtBaseGuiScreen;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.ResourceLocation;
 
 import org.lwjgl.opengl.GL11;
 
 public class GuiPowerJunction extends KraphtBaseGuiScreen {
 
-	private final LogisticsPowerJuntionTileEntity_BuildCraft junction;
+	private final LogisticsPowerJunctionTileEntity junction;
 	
-	public GuiPowerJunction(EntityPlayer player, LogisticsPowerJuntionTileEntity_BuildCraft junction) {
+	public GuiPowerJunction(EntityPlayer player, LogisticsPowerJunctionTileEntity junction) {
 		super(176, 166, 0, 0);
 		this.inventorySlots = junction.createContainer(player);
 		this.junction = junction;
@@ -32,11 +33,13 @@ public class GuiPowerJunction extends KraphtBaseGuiScreen {
 		super.drawGuiContainerForegroundLayer(par1, par2);
 		
 	}
+	
+	private static final ResourceLocation TEXTURE = new ResourceLocation("logisticspipes", "textures/gui/power_junction.png");
 
 	@Override
 	protected void drawGuiContainerBackgroundLayer(float var1, int var2, int var3) {
 		GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-		mc.renderEngine.bindTexture("/logisticspipes/gui/power_junction.png");
+		mc.renderEngine.func_110577_a(TEXTURE);
 		int j = guiLeft;
 		int k = guiTop;
 		drawTexturedModalRect(j, k, 0, 0, xSize, ySize);
@@ -64,7 +67,8 @@ public class GuiPowerJunction extends KraphtBaseGuiScreen {
 	protected void actionPerformed(GuiButton par1GuiButton) {
 		if(par1GuiButton.id == 0) {
 			junction.addEnergy(100000);
-			MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.CHEATJUNCTIONPOWER, junction.getX(), junction.getY(), junction.getZ()).getPacket());
+//TODO 		MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.CHEATJUNCTIONPOWER, junction.getX(), junction.getY(), junction.getZ()).getPacket());
+			MainProxy.sendPacketToServer(PacketHandler.getPacket(PowerJunctionCheatPacket.class).setPosX(junction.getX()).setPosY(junction.getY()).setPosZ(junction.getZ()));
 		} else {
 			super.actionPerformed(par1GuiButton);		
 		}

@@ -2,14 +2,17 @@ package logisticspipes.gui.modules;
 
 import logisticspipes.modules.ModuleProvider;
 import logisticspipes.network.GuiIDs;
-import logisticspipes.network.NetworkConstants;
-import logisticspipes.network.packets.PacketPipeInteger;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.module.ProviderModuleIncludePacket;
+import logisticspipes.network.packets.module.ProviderModuleNextModePacket;
+import logisticspipes.pipes.basic.CoreRoutedPipe;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.utils.gui.DummyContainer;
 import logisticspipes.utils.gui.GuiStringHandlerButton;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.inventory.IInventory;
+import net.minecraft.util.ResourceLocation;
 
 import org.lwjgl.opengl.GL11;
 
@@ -19,15 +22,14 @@ public class GuiProvider extends GuiWithPreviousGuiContainer {
 	
 	private final IInventory _playerInventory;
 	private final ModuleProvider _provider;
-	private final Pipe _pipe;
+	//private final Pipe pipe;
 	private final int _slot;
 
 
-	public GuiProvider(IInventory playerInventory, Pipe pipe, ModuleProvider provider, GuiScreen previousGui, int slot) {
+	public GuiProvider(IInventory playerInventory, CoreRoutedPipe pipe, ModuleProvider provider, GuiScreen previousGui, int slot) {
 		super(null,pipe,previousGui);
 		_playerInventory = playerInventory;
 		_provider = provider;
-		_pipe = pipe;
 		_slot = slot;
 		
 		DummyContainer dummy = new DummyContainer(_playerInventory, _provider.getFilterInventory());
@@ -66,26 +68,30 @@ public class GuiProvider extends GuiWithPreviousGuiContainer {
 	protected void actionPerformed(GuiButton guibutton) {
 		if (guibutton.id == 0){
 			_provider.setFilterExcluded(!_provider.isExcludeFilter());
-			if(_slot != 20) {
-				MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.PROVIDER_MODULE_CHANGE_INCLUDE, _pipe.xCoord, _pipe.yCoord, _pipe.zCoord, _slot).getPacket());
+			if(_slot >= 0) {
+//TODO 			MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.PROVIDER_MODULE_CHANGE_INCLUDE, pipe.getX(), pipe.getY(), pipe.getZ(), _slot).getPacket());
+				MainProxy.sendPacketToServer(PacketHandler.getPacket(ProviderModuleIncludePacket.class).setInteger(_slot).setPosX(pipe.getX()).setPosY(pipe.getY()).setPosZ(pipe.getZ()));
 			} else {
-				MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.PROVIDER_MODULE_CHANGE_INCLUDE, _provider.xCoord, _provider.yCoord, _provider.zCoord, _slot).getPacket());	
+//TODO 			MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.PROVIDER_MODULE_CHANGE_INCLUDE, _provider.getX(), _provider.getY(), _provider.getZ(), _slot).getPacket());	
+				MainProxy.sendPacketToServer(PacketHandler.getPacket(ProviderModuleIncludePacket.class).setInteger(_slot).setPosX(_provider.getX()).setPosY(_provider.getY()).setPosZ(_provider.getZ()));
 			}
 		} else if (guibutton.id  == 1){
 			_provider.nextExtractionMode();
-			if(_slot != 20) {
-				MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.PROVIDER_MODULE_NEXT_MODE, _pipe.xCoord, _pipe.yCoord, _pipe.zCoord, _slot).getPacket());
+			if(_slot >= 0) {
+//TODO 			MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.PROVIDER_MODULE_NEXT_MODE, pipe.getX(), pipe.getY(), pipe.getZ(), _slot).getPacket());
+				MainProxy.sendPacketToServer(PacketHandler.getPacket(ProviderModuleNextModePacket.class).setInteger(_slot).setPosX(pipe.getX()).setPosY(pipe.getY()).setPosZ(pipe.getZ()));
 			} else {
-				MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.PROVIDER_MODULE_NEXT_MODE, _provider.xCoord, _provider.yCoord, _provider.zCoord, _slot).getPacket());
+//TODO 			MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.PROVIDER_MODULE_NEXT_MODE, _provider.getX(), _provider.getY(), _provider.getZ(), _slot).getPacket());
+				MainProxy.sendPacketToServer(PacketHandler.getPacket(ProviderModuleNextModePacket.class).setInteger(_slot).setPosX(_provider.getX()).setPosY(_provider.getY()).setPosZ(_provider.getZ()));
 				}
 		}
 		super.actionPerformed(guibutton);
 	}
-	
+	private static final ResourceLocation TEXTURE = new ResourceLocation("logisticspipes", "textures/gui/supplier.png");	
 	@Override
 	protected void drawGuiContainerBackgroundLayer(float f, int x, int y) {
 		GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-		mc.renderEngine.bindTexture("/logisticspipes/gui/supplier.png");
+		mc.renderEngine.func_110577_a(TEXTURE);
 		int j = guiLeft;
 		int k = guiTop;
 		drawTexturedModalRect(j, k, 0, 0, xSize, ySize);
@@ -104,16 +110,16 @@ public class GuiProvider extends GuiWithPreviousGuiContainer {
 		return GuiIDs.GUI_Module_Provider_ID;
 	}
 
-	public void handleModuleModeRecive(PacketPipeInteger packet) {
-		_provider.setExtractionMode(packet.integer);
+	public void handleModuleModeRecive(int integer) {
+		_provider.setExtractionMode(integer);
 	}
 
 	public void refreshInclude() {
 		((GuiButton)buttonList.get(0)).displayString = _provider.isExcludeFilter() ? "Exclude" : "Include";
 	}
 	
-	public void handleModuleIncludeRecive(PacketPipeInteger packet) {
-		_provider.setFilterExcluded(packet.integer == 1);
+	public void handleModuleIncludeRecive(int integer) {
+		_provider.setFilterExcluded(integer == 1);
 		refreshInclude();
 	}
 }

@@ -1,13 +1,12 @@
 package logisticspipes.modules;
 
-import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 
 import logisticspipes.api.IRoutedPowerProvider;
 import logisticspipes.interfaces.IInventoryUtil;
-import logisticspipes.interfaces.ILogisticsModule;
 import logisticspipes.interfaces.ISendRoutedItem;
 import logisticspipes.interfaces.IWorldProvider;
 import logisticspipes.interfaces.routing.IFilter;
@@ -20,11 +19,14 @@ import logisticspipes.proxy.specialinventoryhandler.SpecialInventoryHandler;
 import logisticspipes.utils.ItemIdentifier;
 import logisticspipes.utils.Pair3;
 import logisticspipes.utils.SinkReply;
-import net.minecraft.inventory.IInventory;
+import net.minecraft.client.renderer.texture.IconRegister;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.Icon;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 
-public class ModuleQuickSort implements ILogisticsModule {
+public class ModuleQuickSort extends LogisticsModule {
 
 	private final int stalledDelay = 24;
 	private final int normalDelay = 6;
@@ -36,11 +38,10 @@ public class ModuleQuickSort implements ILogisticsModule {
 	private IInventoryProvider _invProvider;
 	private ISendRoutedItem _itemSender;
 	private IRoutedPowerProvider _power;
-	private int xCoord;
-	private int yCoord;
-	private int zCoord;
+
+
+
 	private IWorldProvider _world;
-	private ItemIdentifier lastItemKey;
 
 	public ModuleQuickSort() {}
 
@@ -59,12 +60,12 @@ public class ModuleQuickSort implements ILogisticsModule {
 	public void writeToNBT(NBTTagCompound nbttagcompound) {}
 
 	@Override
-	public SinkReply sinksItem(ItemIdentifier item, int bestPriority, int bestCustomPriority) {
+	public SinkReply sinksItem(ItemIdentifier item, int bestPriority, int bestCustomPriority, boolean allowDefault, boolean includeInTransit) {
 		return null;
 	}
 
 	@Override
-	public ILogisticsModule getSubModule(int slot) {
+	public LogisticsModule getSubModule(int slot) {
 		return null;
 	}
 
@@ -78,31 +79,25 @@ public class ModuleQuickSort implements ILogisticsModule {
 			currentTick = normalDelay;
 		
 		//Extract Item
-		IInventory targetInventory = _invProvider.getPointedInventory();
-		if (targetInventory == null) return;
-//		if (targetInventory.getSizeInventory() < 27) return;
+		IInventoryUtil invUtil = _invProvider.getPointedInventory(true);
+		if (invUtil == null) return;
 
 		if(!_power.canUseEnergy(500)) {
 			stalled = true;
 			return;
 		}
-		IInventoryUtil invUtil = SimpleServiceLocator.inventoryUtilFactory.getInventoryUtil(targetInventory);
+		
 		if(invUtil instanceof SpecialInventoryHandler){
-			int maxItemsToSend = 128;
-			HashMap<ItemIdentifier, Integer> items = invUtil.getItemsAndCount();
-			if(lastStackLookedAt>items.size())
-				lastStackLookedAt=0;
+			Map<ItemIdentifier, Integer> items = invUtil.getItemsAndCount();
+			if(lastSuceededStack >= items.size())
+				lastSuceededStack = 0;
+			if (lastStackLookedAt >= items.size())
+				lastStackLookedAt = 0;
 			int lookedAt = 0;
 			for (Entry<ItemIdentifier, Integer> item :items.entrySet()) {
+				// spool to current place
 				lookedAt++;
-				if(item.getKey()==lastItemKey) {// spool to current place
-					lastStackLookedAt=lookedAt;
-					break;
-				}
-			}
-			lookedAt=0;
-			for (Entry<ItemIdentifier, Integer> item :items.entrySet()) {
-				if(lookedAt < lastStackLookedAt) // spool to current place
+				if(lookedAt <= lastStackLookedAt)
 					continue;
 				
 				LinkedList<Integer> jamList =  new LinkedList<Integer>();
@@ -121,22 +116,20 @@ public class ModuleQuickSort implements ILogisticsModule {
 				}
 				stalled = false;
 		
-				boolean partialSend=false;
+				//send up to one stack
+				int maxItemsToSend = item.getKey().getMaxStackSize();
 				int availableItems = Math.min(maxItemsToSend, item.getValue());
 				while(reply != null) {
-					int count = Math.min(availableItems, reply.getValue2().maxNumberOfItems);
-					if(count == 0) {
-						count = Math.min(availableItems, item.getKey().getMaxStackSize());
-					} else {
-						count = Math.min(count, item.getKey().getMaxStackSize());
-					} 
-					ItemStack stackToSend = 
-					invUtil.getMultipleItems(item.getKey(), availableItems);
+					int count = availableItems;
+					if(reply.getValue2().maxNumberOfItems != 0) {
+						count = Math.min(count, reply.getValue2().maxNumberOfItems);
+					}
+					ItemStack stackToSend = invUtil.getMultipleItems(item.getKey(), count);
 		
+					availableItems -= stackToSend.stackSize;
 					_itemSender.sendStack(stackToSend, reply, ItemSendMode.Fast);
-					availableItems-=stackToSend.stackSize;
 					
-					MainProxy.sendSpawnParticlePacket(Particles.OrangeParticle, xCoord, yCoord, zCoord, _world.getWorld(), 8);
+					MainProxy.sendSpawnParticlePacket(Particles.OrangeParticle, getX(), getY(), getZ(), _world.getWorld(), 8);
 		
 					if(availableItems <= 0) break;
 					if(!SimpleServiceLocator.buildCraftProxy.checkMaxItems()) break;
@@ -144,33 +137,37 @@ public class ModuleQuickSort implements ILogisticsModule {
 					jamList.add(reply.getValue1());
 					reply = _itemSender.hasDestination(item.getKey(), false, jamList);
 				}
-				lastSuceededStack=lastStackLookedAt-1;
-				if(lastStackLookedAt==-1)
-					lastStackLookedAt = items.size();
-
-				// no need to increment, as removing an item type from the list will pull the earlier ones down, or there is more left of this type to send, so we shouldn't move on.
+				if(availableItems > 0) { //if we didn't send maxItemsToSend, try next item next time
+					lastSuceededStack = lastStackLookedAt;
+					lastStackLookedAt++;
+				} else {
+					lastSuceededStack = lastStackLookedAt - 1;
+					if(lastSuceededStack < 0)
+						lastSuceededStack = items.size() - 1;
+				}
+				return;
 			}
 		} else {
 			
-			if((!(invUtil instanceof SpecialInventoryHandler) && targetInventory.getSizeInventory() == 0) || !_power.canUseEnergy(500)) {
+			if((!(invUtil instanceof SpecialInventoryHandler) && invUtil.getSizeInventory() == 0) || !_power.canUseEnergy(500)) {
 				stalled = true;
 				return;
 			}
 			
-			if(lastSuceededStack >= targetInventory.getSizeInventory())
+			if(lastSuceededStack >= invUtil.getSizeInventory())
 				lastSuceededStack = 0;
 			
 			//incremented at the end of the previous loop.
-			if (lastStackLookedAt >= targetInventory.getSizeInventory())
+			if (lastStackLookedAt >= invUtil.getSizeInventory())
 				lastStackLookedAt = 0;
 			
-			ItemStack slot = targetInventory.getStackInSlot(lastStackLookedAt);
+			ItemStack slot = invUtil.getStackInSlot(lastStackLookedAt);
 	
 			while(slot==null) {
 				lastStackLookedAt++;
-				if (lastStackLookedAt >= targetInventory.getSizeInventory())
+				if (lastStackLookedAt >= invUtil.getSizeInventory())
 					lastStackLookedAt = 0;
-				slot = targetInventory.getStackInSlot(lastStackLookedAt);
+				slot = invUtil.getStackInSlot(lastStackLookedAt);
 				if(lastStackLookedAt == lastSuceededStack) {
 					stalled = true;
 					return; // then we have been around the list without sending, halt for now
@@ -196,7 +193,9 @@ public class ModuleQuickSort implements ILogisticsModule {
 			stalled = false;
 	
 			//don't directly modify the stack in the inv
+			int sizePrev;
 			slot = slot.copy();
+			sizePrev = slot.stackSize;
 			boolean partialSend=false;
 			while(reply != null) {
 				int count = slot.stackSize;
@@ -206,7 +205,7 @@ public class ModuleQuickSort implements ILogisticsModule {
 				ItemStack stackToSend = slot.splitStack(count);
 	
 				_itemSender.sendStack(stackToSend, reply, ItemSendMode.Fast);
-				MainProxy.sendSpawnParticlePacket(Particles.OrangeParticle, xCoord, yCoord, zCoord, _world.getWorld(), 8);
+				MainProxy.sendSpawnParticlePacket(Particles.OrangeParticle, getX(), getY(), getZ(), _world.getWorld(), 8);
 	
 				if(slot.stackSize == 0) break;
 				if(!SimpleServiceLocator.buildCraftProxy.checkMaxItems()) break;
@@ -214,25 +213,28 @@ public class ModuleQuickSort implements ILogisticsModule {
 				jamList.add(reply.getValue1());
 				reply = _itemSender.hasDestination(ItemIdentifier.get(slot), false, jamList);
 			}
+			ItemStack returned = null;
+			int amountToExtract = sizePrev - slot.stackSize;
 			if(slot.stackSize > 0) {
 				partialSend = true;
-				targetInventory.setInventorySlotContents(lastStackLookedAt, slot);
-			} else {
-				targetInventory.setInventorySlotContents(lastStackLookedAt, null);
+			}
+			returned = invUtil.decrStackSize(lastStackLookedAt, amountToExtract);
+			if(returned.stackSize != amountToExtract) {
+				throw new UnsupportedOperationException("Couldn't extract the already sended items from the inventory.");
 			}
 	
 			lastSuceededStack=lastStackLookedAt;
 			// end duplicate code
 			lastStackLookedAt++;
 			if(partialSend){
-				if (lastStackLookedAt >= targetInventory.getSizeInventory())
+				if (lastStackLookedAt >= invUtil.getSizeInventory())
 					lastStackLookedAt = 0;
 				while(lastStackLookedAt != lastSuceededStack) {
-					ItemStack tstack = targetInventory.getStackInSlot(lastStackLookedAt);
+					ItemStack tstack = invUtil.getStackInSlot(lastStackLookedAt);
 					if(tstack != null && !slot.isItemEqual(tstack))
 						break;
 					lastStackLookedAt++;
-					if (lastStackLookedAt >= targetInventory.getSizeInventory())
+					if (lastStackLookedAt >= invUtil.getSizeInventory())
 						lastStackLookedAt = 0;
 					
 				}
@@ -240,11 +242,22 @@ public class ModuleQuickSort implements ILogisticsModule {
 		}
 	}
 
-	@Override
-	public void registerPosition(int xCoord, int yCoord, int zCoord, int slot) {
-		this.xCoord = xCoord;
-		this.yCoord = yCoord;
-		this.zCoord = zCoord;
+	@Override 
+	public void registerSlot(int slot) {
+	}
+	
+	@Override 
+	public final int getX() {
+		return this._power.getX();
+	}
+	@Override 
+	public final int getY() {
+		return this._power.getY();
+	}
+	
+	@Override 
+	public final int getZ() {
+		return this._power.getZ();
 	}
 	@Override
 	public boolean hasGenericInterests() {
@@ -269,5 +282,11 @@ public class ModuleQuickSort implements ILogisticsModule {
 	@Override
 	public boolean recievePassive() {
 		return true;
+	}
+
+	@Override
+	@SideOnly(Side.CLIENT)
+	public Icon getIconTexture(IconRegister register) {
+		return register.registerIcon("logisticspipes:itemModule/ModuleQuickSort");
 	}
 }

@@ -17,27 +17,31 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
+import logisticspipes.LogisticsPipes;
 import logisticspipes.gui.hud.HUDProvider;
 import logisticspipes.interfaces.IChangeListener;
 import logisticspipes.interfaces.IChestContentReceiver;
 import logisticspipes.interfaces.IHeadUpDisplayRenderer;
 import logisticspipes.interfaces.IHeadUpDisplayRendererProvider;
 import logisticspipes.interfaces.IInventoryUtil;
-import logisticspipes.interfaces.ILogisticsModule;
 import logisticspipes.interfaces.IOrderManagerContentReceiver;
 import logisticspipes.interfaces.routing.IFilter;
 import logisticspipes.interfaces.routing.IProvideItems;
 import logisticspipes.interfaces.routing.IRelayItem;
 import logisticspipes.interfaces.routing.IRequestItems;
-import logisticspipes.logic.LogicProvider;
 import logisticspipes.logistics.LogisticsManagerV2;
 import logisticspipes.logisticspipes.ExtractionMode;
 import logisticspipes.logisticspipes.IRoutedItem;
 import logisticspipes.logisticspipes.IRoutedItem.TransportMode;
-import logisticspipes.logisticspipes.SidedInventoryAdapter;
-import logisticspipes.network.NetworkConstants;
-import logisticspipes.network.packets.PacketPipeInteger;
-import logisticspipes.network.packets.PacketPipeInvContent;
+import logisticspipes.modules.LogisticsModule;
+import logisticspipes.network.GuiIDs;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.hud.ChestContent;
+import logisticspipes.network.packets.hud.HUDStartWatchingPacket;
+import logisticspipes.network.packets.hud.HUDStopWatchingPacket;
+import logisticspipes.network.packets.modules.ProviderPipeInclude;
+import logisticspipes.network.packets.modules.ProviderPipeMode;
+import logisticspipes.network.packets.orderer.OrdererManagerContent;
 import logisticspipes.pipefxhandlers.Particles;
 import logisticspipes.pipes.basic.CoreRoutedPipe;
 import logisticspipes.proxy.MainProxy;
@@ -52,18 +56,21 @@ import logisticspipes.utils.AdjacentTile;
 import logisticspipes.utils.ItemIdentifier;
 import logisticspipes.utils.ItemIdentifierStack;
 import logisticspipes.utils.Pair3;
+import logisticspipes.utils.PlayerCollectionList;
+import logisticspipes.utils.SidedInventoryMinecraftAdapter;
+import logisticspipes.utils.SimpleInventory;
 import logisticspipes.utils.SinkReply;
 import logisticspipes.utils.WorldUtil;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
-import net.minecraftforge.common.ISidedInventory;
+import net.minecraft.nbt.NBTTagCompound;
 import buildcraft.transport.TileGenericPipe;
 import cpw.mods.fml.common.network.Player;
 
 public class PipeItemsProviderLogistics extends CoreRoutedPipe implements IProvideItems, IHeadUpDisplayRendererProvider, IChestContentReceiver, IChangeListener, IOrderManagerContentReceiver {
 
-	public final List<EntityPlayer> localModeWatchers = new ArrayList<EntityPlayer>();
+	public final PlayerCollectionList localModeWatchers = new PlayerCollectionList();
 
 	private final Map<ItemIdentifier,Integer> displayMap = new HashMap<ItemIdentifier, Integer>();
 	public final ArrayList<ItemIdentifierStack> displayList = new ArrayList<ItemIdentifierStack>();
@@ -77,7 +84,7 @@ public class PipeItemsProviderLogistics extends CoreRoutedPipe implements IProvi
 	private boolean doContentUpdate = true;
 		
 	public PipeItemsProviderLogistics(int itemID) {
-		super(new LogicProvider(), itemID);
+		super(itemID);
 	}
 	
 	public PipeItemsProviderLogistics(int itemID, LogisticsOrderManager logisticsOrderManager) {
@@ -86,8 +93,7 @@ public class PipeItemsProviderLogistics extends CoreRoutedPipe implements IProvi
 	}
 	
 	@Override
-	public void onBlockRemoval() {
-		super.onBlockRemoval();
+	public void onAllowedRemoval() {
 		while(_orderManager.hasOrders()) {
 			_orderManager.sendFailed();
 		}
@@ -100,14 +106,13 @@ public class PipeItemsProviderLogistics extends CoreRoutedPipe implements IProvi
 		}
 		
 		//Check if configurations allow for this item
-		LogicProvider logicProvider = (LogicProvider) logic;
-		if (logicProvider.hasFilter() 
-				&& ((logicProvider.isExcludeFilter() && logicProvider.itemIsFiltered(item)) 
-						|| (!logicProvider.isExcludeFilter() && !logicProvider.itemIsFiltered(item)))) return 0;
+		if (hasFilter() 
+				&& ((isExcludeFilter() && itemIsFiltered(item)) 
+						|| (!isExcludeFilter() && !itemIsFiltered(item)))) return 0;
 		
 		
 		int count = 0;
-		WorldUtil wUtil = new WorldUtil(worldObj, xCoord, yCoord, zCoord);
+		WorldUtil wUtil = new WorldUtil(getWorld(), getX(), getY(), getZ());
 		for (AdjacentTile tile : wUtil.getAdjacentTileEntities(true)){
 			if (!(tile.tile instanceof IInventory)) continue;
 			if (tile.tile instanceof TileGenericPipe) continue;
@@ -132,7 +137,7 @@ public class PipeItemsProviderLogistics extends CoreRoutedPipe implements IProvi
 	private int sendStack(ItemIdentifierStack stack, int maxCount, int destination, List<IRelayItem> relays) {
 		ItemIdentifier item = stack.getItem();
 		
-		WorldUtil wUtil = new WorldUtil(worldObj, xCoord, yCoord, zCoord);
+		WorldUtil wUtil = new WorldUtil(getWorld(), getX(), getY(), getZ());
 		for (AdjacentTile tile : wUtil.getAdjacentTileEntities(true)){
 			if (!(tile.tile instanceof IInventory)) continue;
 			if (tile.tile instanceof TileGenericPipe) continue;
@@ -149,7 +154,7 @@ public class PipeItemsProviderLogistics extends CoreRoutedPipe implements IProvi
 				_orderManager.sendFailed();
 				return 0;
 			}
-			SinkReply reply = LogisticsManagerV2.canSink(dRtr, null, true, stack.getItem(), null, true);
+			SinkReply reply = LogisticsManagerV2.canSink(dRtr, null, true, stack.getItem(), null, true,false);
 			boolean defersend = false;
 			if(reply != null) {// some pipes are not aware of the space in the adjacent inventory, so they return null
 				if(reply.maxNumberOfItems < wanted) {
@@ -169,7 +174,7 @@ public class PipeItemsProviderLogistics extends CoreRoutedPipe implements IProvi
 			int sent = removed.stackSize;
 			useEnergy(sent * neededEnergy());
 
-			IRoutedItem routedItem = SimpleServiceLocator.buildCraftProxy.CreateRoutedItem(removed, this.worldObj);
+			IRoutedItem routedItem = SimpleServiceLocator.buildCraftProxy.CreateRoutedItem(this.container, removed);
 			routedItem.setDestination(destination);
 			routedItem.setTransportMode(TransportMode.Active);
 			routedItem.addRelayPoints(relays);
@@ -184,10 +189,10 @@ public class PipeItemsProviderLogistics extends CoreRoutedPipe implements IProvi
 	
 	private IInventoryUtil getAdaptedInventoryUtil(AdjacentTile tile){
 		IInventory base = (IInventory) tile.tile;
-		if (base instanceof ISidedInventory) {
-			base = new SidedInventoryAdapter((ISidedInventory) base, tile.orientation.getOpposite());
+		if(base instanceof net.minecraft.inventory.ISidedInventory) {
+			base = new SidedInventoryMinecraftAdapter((net.minecraft.inventory.ISidedInventory)base, tile.orientation.getOpposite(),false);
 		}
-		ExtractionMode mode = ((LogicProvider)logic).getExtractionMode();
+		ExtractionMode mode = getExtractionMode();
 		switch(mode){
 			case LeaveFirst:
 				return SimpleServiceLocator.inventoryUtilFactory.getHidingInventoryUtil(base, false, false, 1, 0);
@@ -220,7 +225,7 @@ public class PipeItemsProviderLogistics extends CoreRoutedPipe implements IProvi
 	@Override
 	public void enabledUpdateEntity() {
 		
-		if(worldObj.getWorldTime() % 6 == 0) {
+		if(getWorld().getWorldTime() % 6 == 0) {
 			updateInv(null);
 		}
 		
@@ -228,7 +233,7 @@ public class PipeItemsProviderLogistics extends CoreRoutedPipe implements IProvi
 			checkContentUpdate(null);
 		}
 		
-		if (!_orderManager.hasOrders() || worldObj.getWorldTime() % 6 != 0) return;
+		if (!_orderManager.hasOrders() || getWorld().getWorldTime() % 6 != 0) return;
 
 		int itemsleft = itemsToExtract();
 		int stacksleft = stacksToExtract();
@@ -240,7 +245,7 @@ public class PipeItemsProviderLogistics extends CoreRoutedPipe implements IProvi
 			order = _orderManager.peekAtTopRequest();
 			int sent = sendStack(order.getValue1(), itemsleft, order.getValue2().getRouter().getSimpleID(), order.getValue3());
 			if(sent < 0) break;
-			MainProxy.sendSpawnParticlePacket(Particles.VioletParticle, xCoord, yCoord, zCoord, this.worldObj, 3);
+			MainProxy.sendSpawnParticlePacket(Particles.VioletParticle, getX(), getY(), getZ(), this.getWorld(), 3);
 			stacksleft -= 1;
 			itemsleft -= sent;
 		}
@@ -276,7 +281,7 @@ public class PipeItemsProviderLogistics extends CoreRoutedPipe implements IProvi
 	@Override
 	public void fullFill(LogisticsPromise promise, IRequestItems destination) {
 		_orderManager.addOrder(new ItemIdentifierStack(promise.item, promise.numberOfItems), destination, promise.relayPoints);
-		MainProxy.sendSpawnParticlePacket(Particles.WhiteParticle, xCoord, yCoord, zCoord, this.worldObj, 2);
+		MainProxy.sendSpawnParticlePacket(Particles.WhiteParticle, getX(), getY(), getZ(), this.getWorld(), 2);
 	}
 
 	@Override
@@ -284,21 +289,20 @@ public class PipeItemsProviderLogistics extends CoreRoutedPipe implements IProvi
 		if (!isEnabled()){
 			return;
 		}
-		LogicProvider providerLogic = (LogicProvider) logic;
 		HashMap<ItemIdentifier, Integer> addedItems = new HashMap<ItemIdentifier, Integer>();
 		
-		WorldUtil wUtil = new WorldUtil(worldObj, xCoord, yCoord, zCoord);
+		WorldUtil wUtil = new WorldUtil(getWorld(), getX(), getY(), getZ());
 		for (AdjacentTile tile : wUtil.getAdjacentTileEntities(true)){
 			if (!(tile.tile instanceof IInventory)) continue;
 			if (tile.tile instanceof TileGenericPipe) continue;
 			IInventoryUtil inv = this.getAdaptedInventoryUtil(tile);
 			
-			HashMap<ItemIdentifier, Integer> currentInv = inv.getItemsAndCount();
+			Map<ItemIdentifier, Integer> currentInv = inv.getItemsAndCount();
 outer:
 			for (Entry<ItemIdentifier, Integer> currItem : currentInv.entrySet()) {
 				if(items.containsKey(currItem.getKey())) continue;
 				
-				if(providerLogic.hasFilter() && ((providerLogic.isExcludeFilter() && providerLogic.itemIsFiltered(currItem.getKey()))  || (!providerLogic.isExcludeFilter() && !providerLogic.itemIsFiltered(currItem.getKey())))) continue;
+				if(hasFilter() && ((isExcludeFilter() && itemIsFiltered(currItem.getKey()))  || (!isExcludeFilter() && !itemIsFiltered(currItem.getKey())))) continue;
 				
 				for(IFilter filter:filters) {
 					if(filter.isBlocked() == filter.isFilteredItem(currItem.getKey().getUndamaged()) || filter.blockProvider()) continue outer;
@@ -323,7 +327,7 @@ outer:
 	}
 
 	@Override
-	public ILogisticsModule getLogisticsModule() {
+	public LogisticsModule getLogisticsModule() {
 		return null;
 	}
 
@@ -333,28 +337,15 @@ outer:
 	}
 
 	@Override
-	public int getX() {
-		return xCoord;
+	public void startWatching() {
+//TODO 	MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_START_WATCHING, getX(), getY(), getZ(), 1 /*TODO*/).getPacket());
+		MainProxy.sendPacketToServer(PacketHandler.getPacket(HUDStartWatchingPacket.class).setInteger(1 /*TODO*/).setPosX(getX()).setPosY(getY()).setPosZ(getZ()));
 	}
 
 	@Override
-	public int getY() {
-		return yCoord;
-	}
-
-	@Override
-	public int getZ() {
-		return zCoord;
-	}
-
-	@Override
-	public void startWaitching() {
-		MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_START_WATCHING, xCoord, yCoord, zCoord, 1 /*TODO*/).getPacket());
-	}
-
-	@Override
-	public void stopWaitching() {
-		MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_STOP_WATCHING, xCoord, yCoord, zCoord, 1 /*TODO*/).getPacket());
+	public void stopWatching() {
+//TODO 	MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_STOP_WATCHING, getX(), getY(), getZ(), 1 /*TODO*/).getPacket());
+		MainProxy.sendPacketToServer(PacketHandler.getPacket(HUDStopWatchingPacket.class).setInteger(1 /*TODO*/).setPosX(getX()).setPosY(getY()).setPosZ(getZ()));
 	}
 	
 	private void updateInv(EntityPlayer player) {
@@ -371,9 +362,11 @@ outer:
 			oldList.clear();
 			oldList.ensureCapacity(displayList.size());
 			oldList.addAll(displayList);
-			MainProxy.sendCompressedToPlayerList(new PacketPipeInvContent(NetworkConstants.PIPE_CHEST_CONTENT, xCoord, yCoord, zCoord, displayList).getPacket(), localModeWatchers);
+//TODO 		MainProxy.sendCompressedToPlayerList(new PacketPipeInvContent(NetworkConstants.PIPE_CHEST_CONTENT, getX(), getY(), getZ(), displayList).getPacket(), localModeWatchers);
+			MainProxy.sendToPlayerList(PacketHandler.getPacket(ChestContent.class).setIdentList(displayList).setPosX(getX()).setPosY(getY()).setPosZ(getZ()), localModeWatchers);
 		} else if(player != null) {
-			MainProxy.sendCompressedPacketToPlayer(new PacketPipeInvContent(NetworkConstants.PIPE_CHEST_CONTENT, xCoord, yCoord, zCoord, displayList).getPacket(), (Player)player);
+//TODO 		MainProxy.sendCompressedPacketToPlayer(new PacketPipeInvContent(NetworkConstants.PIPE_CHEST_CONTENT, getX(), getY(), getZ(), displayList).getPacket(), (Player)player);
+			MainProxy.sendPacketToPlayer(PacketHandler.getPacket(ChestContent.class).setIdentList(displayList).setPosX(getX()).setPosY(getY()).setPosZ(getZ()), (Player)player);
 		}
 	}
 
@@ -384,13 +377,15 @@ outer:
 
 	private void checkContentUpdate(EntityPlayer player) {
 		doContentUpdate = false;
-		LinkedList<ItemIdentifierStack> all = _orderManager.getContentList(this.worldObj);
+		LinkedList<ItemIdentifierStack> all = _orderManager.getContentList(this.getWorld());
 		if(!oldManagerList.equals(all)) {
 			oldManagerList.clear();
 			oldManagerList.addAll(all);
-			MainProxy.sendToPlayerList(new PacketPipeInvContent(NetworkConstants.ORDER_MANAGER_CONTENT, xCoord, yCoord, zCoord, all).getPacket(), localModeWatchers);
+//TODO 		MainProxy.sendToPlayerList(new PacketPipeInvContent(NetworkConstants.ORDER_MANAGER_CONTENT, getX(), getY(), getZ(), all).getPacket(), localModeWatchers);
+			MainProxy.sendToPlayerList(PacketHandler.getPacket(OrdererManagerContent.class).setIdentList(all).setPosX(getX()).setPosY(getY()).setPosZ(getZ()), localModeWatchers);
 		} else if(player != null) {
-			MainProxy.sendPacketToPlayer(new PacketPipeInvContent(NetworkConstants.ORDER_MANAGER_CONTENT, xCoord, yCoord, zCoord, all).getPacket(), (Player)player);
+//TODO 		MainProxy.sendPacketToPlayer(new PacketPipeInvContent(NetworkConstants.ORDER_MANAGER_CONTENT, getX(), getY(), getZ(), all).getPacket(), (Player)player);
+			MainProxy.sendPacketToPlayer(PacketHandler.getPacket(OrdererManagerContent.class).setIdentList(all).setPosX(getX()).setPosY(getY()).setPosZ(getZ()), (Player)player);
 		}
 	}
 	
@@ -431,7 +426,7 @@ outer:
 
 	@Override //work in progress, currently not active code.
 	public Set<ItemIdentifier> getSpecificInterests() {
-		WorldUtil wUtil = new WorldUtil(worldObj, xCoord, yCoord, zCoord);
+		WorldUtil wUtil = new WorldUtil(getWorld(), getX(), getY(), getZ());
 		Set<ItemIdentifier> l1 = null;
 		for (AdjacentTile tile : wUtil.getAdjacentTileEntities(true)){
 			if (!(tile.tile instanceof IInventory)) continue;
@@ -452,5 +447,73 @@ outer:
 		return (_orderManager.totalItemsCountInAllOrders()+63)/64.0;
 	}
 
+	// import from logic
+	private SimpleInventory providingInventory = new SimpleInventory(9, "Items to provide (or empty for all)", 1);
+	private boolean _filterIsExclude;
+	private ExtractionMode _extractionMode = ExtractionMode.Normal;
+
+	@Override
+	public void onWrenchClicked(EntityPlayer entityplayer) {
+		if(MainProxy.isServer(entityplayer.worldObj)) {
+			//GuiProxy.openGuiProviderPipe(entityplayer.inventory, providingInventory, this);
+			entityplayer.openGui(LogisticsPipes.instance, GuiIDs.GUI_ProviderPipe_ID, getWorld(), getX(), getY(), getZ());
+//TODO 		MainProxy.sendPacketToPlayer(new PacketPipeInteger(NetworkConstants.PROVIDER_PIPE_MODE_CONTENT, getX(), getY(), getZ(), getExtractionMode().ordinal()).getPacket(), (Player)entityplayer);
+			MainProxy.sendPacketToPlayer(PacketHandler.getPacket(ProviderPipeMode.class).setInteger(getExtractionMode().ordinal()).setPosX(getX()).setPosY(getY()).setPosZ(getZ()), (Player)entityplayer);
+//TODO 		MainProxy.sendPacketToPlayer(new PacketPipeInteger(NetworkConstants.PROVIDER_PIPE_INCLUDE_CONTENT, getX(), getY(), getZ(), isExcludeFilter() ? 1 : 0).getPacket(), (Player)entityplayer);
+			MainProxy.sendPacketToPlayer(PacketHandler.getPacket(ProviderPipeInclude.class).setInteger(isExcludeFilter() ? 1 : 0).setPosX(getX()).setPosY(getY()).setPosZ(getZ()), (Player)entityplayer);
+		}	
+	}
+	
+	/*** GUI ***/
+	public SimpleInventory getprovidingInventory() {
+		return providingInventory;
+	}
+
+	@Override
+	public void readFromNBT(NBTTagCompound nbttagcompound) {
+		super.readFromNBT(nbttagcompound);
+		providingInventory.readFromNBT(nbttagcompound, "");
+		_filterIsExclude = nbttagcompound.getBoolean("filterisexclude");
+		_extractionMode = ExtractionMode.getMode(nbttagcompound.getInteger("extractionMode"));
+    }
+
+	@Override
+    public void writeToNBT(NBTTagCompound nbttagcompound) {
+    	super.writeToNBT(nbttagcompound);
+    	providingInventory.writeToNBT(nbttagcompound, "");
+    	nbttagcompound.setBoolean("filterisexclude", _filterIsExclude);
+    	nbttagcompound.setInteger("extractionMode", _extractionMode.ordinal());
+    }
+	
+	/** INTERFACE TO PIPE **/
+	public boolean hasFilter(){
+		return !providingInventory.isEmpty();
+	}
+	
+	public boolean itemIsFiltered(ItemIdentifier item){
+		return providingInventory.containsItem(item);
+	}
+	
+	public boolean isExcludeFilter(){
+		return _filterIsExclude;
+	}
+	
+	public void setFilterExcluded(boolean isExcluded){
+		_filterIsExclude = isExcluded;
+	}
+	
+	public ExtractionMode getExtractionMode(){
+		return _extractionMode;
+	}
+
+	public void setExtractionMode(int id) {
+		_extractionMode = ExtractionMode.getMode(id);
+	}
+
+	public void nextExtractionMode() {
+		_extractionMode = _extractionMode.next();
+	}
+
+	
 
 }

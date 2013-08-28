@@ -1,13 +1,18 @@
 package logisticspipes.proxy.ic2;
 
-import ic2.api.IElectricItem;
-import ic2.api.Ic2Recipes;
-import ic2.api.Items;
+import ic2.api.energy.event.EnergyTileLoadEvent;
+import ic2.api.energy.event.EnergyTileUnloadEvent;
+import ic2.api.energy.tile.IEnergyTile;
+import ic2.api.item.IElectricItem;
+import ic2.api.item.Items;
+import ic2.api.recipe.Recipes;
 import logisticspipes.LogisticsPipes;
 import logisticspipes.items.ItemModule;
 import logisticspipes.proxy.interfaces.IIC2Proxy;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraftforge.common.MinecraftForge;
 import buildcraft.BuildCraftCore;
 import buildcraft.BuildCraftSilicon;
 
@@ -20,16 +25,28 @@ public class IC2Proxy implements IIC2Proxy {
 	 */
 	@Override
 	public boolean isElectricItem(ItemStack stack) {
-		return stack != null && stack.getItem() instanceof IElectricItem;
+		return stack != null && (stack.getItem() instanceof IElectricItem);
+	}
+
+	/**
+	 * @return Boolean, true if stack is the same type of ic2 electric item as template.
+	 * @param stack The stack to check
+	 * @param template The stack to compare to
+	 */
+	@Override
+	public boolean isSimilarElectricItem(ItemStack stack, ItemStack template) {
+		if (stack == null || template == null || !isElectricItem(template)) return false;
+		if (((IElectricItem) template.getItem()).getEmptyItemId(stack) == stack.itemID) return true;
+		if (((IElectricItem) template.getItem()).getChargedItemId(stack) == stack.itemID) return true;
+		return false;
 	}
 
 	/**
 	 * @return Int value of current charge on electric item.
 	 * @param stack The stack to get charge for.
 	 */
-	@Override
-	public int getCharge(ItemStack stack) {
-		if (stack.getItem() instanceof IElectricItem && stack.hasTagCompound()) {
+	private int getCharge(ItemStack stack) {
+		if ((stack.getItem() instanceof IElectricItem) && stack.hasTagCompound()) {
 			return stack.getTagCompound().getInteger("charge");
 		} else {
 			return 0;
@@ -40,12 +57,9 @@ public class IC2Proxy implements IIC2Proxy {
 	 * @return Int value of maximum charge on electric item.
 	 * @param stack The stack to get max charge for.
 	 */
-	@Override
-	public int getMaxCharge(ItemStack stack) {
+	private int getMaxCharge(ItemStack stack) {
 		if (!(stack.getItem() instanceof IElectricItem)) return 0;
-		//TODO: fixme
-		return 0;
-		//return ((IElectricItem) stack.getItem()).getMaxCharge();
+		return ((IElectricItem) stack.getItem()).getMaxCharge(stack);
 	}
 
 	/**
@@ -55,6 +69,7 @@ public class IC2Proxy implements IIC2Proxy {
 	@Override
 	public boolean isFullyCharged(ItemStack stack) {
 		if (!isElectricItem(stack)) return false;
+		if (((IElectricItem) stack.getItem()).getChargedItemId(stack) != stack.itemID) return false;
 		int charge = getCharge(stack);
 		int maxCharge = getMaxCharge(stack);
 		return charge == maxCharge;
@@ -67,17 +82,22 @@ public class IC2Proxy implements IIC2Proxy {
 	@Override
 	public boolean isFullyDischarged(ItemStack stack) {
 		if (!isElectricItem(stack)) return false;
+		if (((IElectricItem) stack.getItem()).getEmptyItemId(stack) != stack.itemID) return false;
 		int charge = getCharge(stack);
 		return charge == 0;
 	}
 	
 	/**
 	 * @return Boolean, true if electric item contains charge but is not full.
-	 * @param stack The stack to check if its partially chraged.
+	 * @param stack The stack to check if its partially charged.
 	 */
 	@Override
 	public boolean isPartiallyCharged(ItemStack stack) {
-		return (!isFullyCharged(stack) && !isFullyDischarged(stack));
+		if (!isElectricItem(stack)) return false;
+		if (((IElectricItem) stack.getItem()).getChargedItemId(stack) != stack.itemID) return false;
+		int charge = getCharge(stack);
+		int maxCharge = getMaxCharge(stack);
+		return charge != maxCharge;
 	}
 	
 	/**
@@ -85,7 +105,7 @@ public class IC2Proxy implements IIC2Proxy {
 	 */
 	@Override
 	public void addCraftingRecipes() {
-		Ic2Recipes.addCraftingRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICBUFFER), new Object[] { 
+		Recipes.advRecipes.addRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICBUFFER), new Object[] { 
 			"CGC", 
 			"rBr", 
 			"CrC", 
@@ -95,7 +115,7 @@ public class IC2Proxy implements IIC2Proxy {
 			Character.valueOf('B'), new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.BLANK)
 		});
 		
-		Ic2Recipes.addCraftingRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICBUFFER), new Object[] { 
+		Recipes.advRecipes.addRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICBUFFER), new Object[] { 
 			" G ", 
 			"rBr", 
 			"CrC", 
@@ -106,7 +126,7 @@ public class IC2Proxy implements IIC2Proxy {
 		});
 
 
-		Ic2Recipes.addCraftingRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICMANAGER), new Object[] { 
+		Recipes.advRecipes.addRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICMANAGER), new Object[] { 
 			"CGD", 
 			"rBr", 
 			"DrC", 
@@ -117,7 +137,7 @@ public class IC2Proxy implements IIC2Proxy {
 			Character.valueOf('B'), new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.BLANK)
 		});
 		
-		Ic2Recipes.addCraftingRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICMANAGER), new Object[] { 
+		Recipes.advRecipes.addRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICMANAGER), new Object[] { 
 			"CGD", 
 			"rBr", 
 			"DrC", 
@@ -128,7 +148,7 @@ public class IC2Proxy implements IIC2Proxy {
 			Character.valueOf('B'), new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.BLANK)
 		});
 		
-		Ic2Recipes.addCraftingRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICMANAGER), new Object[] { 
+		Recipes.advRecipes.addRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICMANAGER), new Object[] { 
 			"CGc", 
 			"rBr", 
 			"DrC", 
@@ -140,7 +160,7 @@ public class IC2Proxy implements IIC2Proxy {
 			Character.valueOf('B'), new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.BLANK)
 		});
 		
-		Ic2Recipes.addCraftingRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICMANAGER), new Object[] { 
+		Recipes.advRecipes.addRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICMANAGER), new Object[] { 
 			"CGc", 
 			"rBr", 
 			"DrC", 
@@ -152,7 +172,7 @@ public class IC2Proxy implements IIC2Proxy {
 			Character.valueOf('B'), new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.BLANK)
 		});
 
-		Ic2Recipes.addCraftingRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICMANAGER), new Object[] { 
+		Recipes.advRecipes.addRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICMANAGER), new Object[] { 
 			" G ", 
 			"rBr", 
 			"DrC", 
@@ -163,7 +183,7 @@ public class IC2Proxy implements IIC2Proxy {
 			Character.valueOf('B'), new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.BLANK)
 		});
 		
-		Ic2Recipes.addCraftingRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICMANAGER), new Object[] { 
+		Recipes.advRecipes.addRecipe(new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.ELECTRICMANAGER), new Object[] { 
 			" G ", 
 			"rBr", 
 			"DrC", 
@@ -174,6 +194,24 @@ public class IC2Proxy implements IIC2Proxy {
 			Character.valueOf('B'), new ItemStack(LogisticsPipes.ModuleItem, 1, ItemModule.BLANK)
 		});
 	}
+	
+	/**
+	 * Registers an TileEntity to the IC2 EnergyNet
+	 * @param has to be an instance of IEnergyTile
+	*/
+	@Override
+	public void registerToEneryNet(TileEntity tile) {
+		MinecraftForge.EVENT_BUS.post(new EnergyTileLoadEvent((IEnergyTile) tile));
+	}
+
+	/**
+	 * Removes an TileEntity from the IC2 EnergyNet
+	 * @param has to be an instance of IEnergyTile
+	*/
+	@Override
+	public void unregisterToEneryNet(TileEntity tile) {
+		MinecraftForge.EVENT_BUS.post(new EnergyTileUnloadEvent((IEnergyTile) tile));
+	}
 
 	/**
 	 * @return If IC2 is loaded, returns true.
@@ -181,7 +219,4 @@ public class IC2Proxy implements IIC2Proxy {
 	@Override
 	public boolean hasIC2() {
 		return true;
-	}
-
-
-}
+	}}

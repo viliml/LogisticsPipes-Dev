@@ -7,6 +7,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+
 import logisticspipes.api.IRoutedPowerProvider;
 import logisticspipes.gui.hud.modules.HUDProviderModule;
 import logisticspipes.interfaces.IClientInformationProvider;
@@ -14,8 +15,6 @@ import logisticspipes.interfaces.IHUDModuleHandler;
 import logisticspipes.interfaces.IHUDModuleRenderer;
 import logisticspipes.interfaces.IInventoryUtil;
 import logisticspipes.interfaces.ILegacyActiveModule;
-import logisticspipes.interfaces.ILogisticsGuiModule;
-import logisticspipes.interfaces.ILogisticsModule;
 import logisticspipes.interfaces.IModuleInventoryReceive;
 import logisticspipes.interfaces.IModuleWatchReciver;
 import logisticspipes.interfaces.ISendRoutedItem;
@@ -28,9 +27,9 @@ import logisticspipes.logistics.LogisticsManagerV2;
 import logisticspipes.logisticspipes.ExtractionMode;
 import logisticspipes.logisticspipes.IInventoryProvider;
 import logisticspipes.network.GuiIDs;
-import logisticspipes.network.NetworkConstants;
-import logisticspipes.network.packets.PacketModuleInvContent;
-import logisticspipes.network.packets.PacketPipeInteger;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.hud.HUDStartModuleWatchingPacket;
+import logisticspipes.network.packets.module.ModuleInventory;
 import logisticspipes.pipefxhandlers.Particles;
 import logisticspipes.pipes.basic.CoreRoutedPipe.ItemSendMode;
 import logisticspipes.proxy.MainProxy;
@@ -42,15 +41,20 @@ import logisticspipes.routing.LogisticsPromise;
 import logisticspipes.utils.ItemIdentifier;
 import logisticspipes.utils.ItemIdentifierStack;
 import logisticspipes.utils.Pair3;
+import logisticspipes.utils.PlayerCollectionList;
 import logisticspipes.utils.SimpleInventory;
 import logisticspipes.utils.SinkReply;
+import net.minecraft.client.renderer.texture.IconRegister;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.Icon;
 import cpw.mods.fml.common.network.Player;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 
-public class ModuleProvider implements ILogisticsGuiModule, ILegacyActiveModule, IClientInformationProvider, IHUDModuleHandler, IModuleWatchReciver, IModuleInventoryReceive {
+public class ModuleProvider extends LogisticsGuiModule implements ILegacyActiveModule, IClientInformationProvider, IHUDModuleHandler, IModuleWatchReciver, IModuleInventoryReceive {
 	
 	protected IInventoryProvider _invProvider;
 	protected ISendRoutedItem _itemSender;
@@ -69,9 +73,7 @@ public class ModuleProvider implements ILogisticsGuiModule, ILegacyActiveModule,
 	protected ExtractionMode _extractionMode = ExtractionMode.Normal;
 	
 	private int slot = 0;
-	public int xCoord = 0;
-	public int yCoord = 0;
-	public int zCoord = 0;
+
 	private IWorldProvider _world;
 
 	private final Map<ItemIdentifier,Integer> displayMap = new HashMap<ItemIdentifier, Integer>();
@@ -80,7 +82,7 @@ public class ModuleProvider implements ILogisticsGuiModule, ILegacyActiveModule,
 	
 	private IHUDModuleRenderer HUD = new HUDProviderModule(this);
 
-	private final List<EntityPlayer> localModeWatchers = new ArrayList<EntityPlayer>();
+	private final PlayerCollectionList localModeWatchers = new PlayerCollectionList();
 	
 	public ModuleProvider() {}
 
@@ -130,12 +132,12 @@ public class ModuleProvider implements ILogisticsGuiModule, ILegacyActiveModule,
 	}
 
 	@Override
-	public SinkReply sinksItem(ItemIdentifier item, int bestPriority, int bestCustomPriority) {
+	public SinkReply sinksItem(ItemIdentifier item, int bestPriority, int bestCustomPriority, boolean allowDefault, boolean includeInTransit) {
 		return null;
 	}
 
 	@Override
-	public ILogisticsModule getSubModule(int slot) {
+	public LogisticsModule getSubModule(int slot) {
 		return null;
 	}
 
@@ -154,7 +156,7 @@ public class ModuleProvider implements ILogisticsGuiModule, ILegacyActiveModule,
 			order = _orderManager.peekAtTopRequest();
 			int sent = sendStack(order.getValue1(), itemsleft, order.getValue2().getRouter().getSimpleID(), order.getValue3());
 			if(sent < 0) break;
-			MainProxy.sendSpawnParticlePacket(Particles.VioletParticle, xCoord, yCoord, zCoord, _world.getWorld(), 3);
+			MainProxy.sendSpawnParticlePacket(Particles.VioletParticle, getX(), getY(), getZ(), _world.getWorld(), 3);
 			stacksleft -= 1;
 			itemsleft -= sent;
 		}
@@ -203,10 +205,10 @@ public class ModuleProvider implements ILogisticsGuiModule, ILegacyActiveModule,
 
 	@Override
 	public void getAllItems(Map<ItemIdentifier, Integer> items, List<IFilter> filters) {
-		if (_invProvider.getPointedInventory() == null) return;
+		IInventoryUtil inv =_invProvider.getPointedInventory(_extractionMode,true);
+		if (inv == null) return;
 		
-		IInventoryUtil inv = getAdaptedUtil(_invProvider.getPointedInventory());
-		HashMap<ItemIdentifier, Integer> currentInv = inv.getItemsAndCount();
+		Map<ItemIdentifier, Integer> currentInv = inv.getItemsAndCount();
 
 		//Skip already added items from this provider, skip filtered items, Reduce what has been reserved, add.
 outer:
@@ -235,11 +237,11 @@ outer:
 	// returns 0 on "unable to do this delivery"
 	private int sendStack(ItemIdentifierStack stack, int maxCount, int destination, List<IRelayItem> relays) {
 		ItemIdentifier item = stack.getItem();
-		if (_invProvider.getPointedInventory() == null) {
+		IInventoryUtil inv = _invProvider.getPointedInventory(_extractionMode,true);
+		if (inv == null) {
 			_orderManager.sendFailed();
 			return 0;
 		}
-		IInventoryUtil inv = getAdaptedUtil(_invProvider.getPointedInventory());
 		
 		int available = inv.itemCount(item);
 		if (available == 0) {
@@ -254,7 +256,7 @@ outer:
 			_orderManager.sendFailed();
 			return 0;
 		}
-		SinkReply reply = LogisticsManagerV2.canSink(dRtr, null, true, stack.getItem(), null, true);
+		SinkReply reply = LogisticsManagerV2.canSink(dRtr, null, true, stack.getItem(), null, true, false);
 		boolean defersend = false;
 		if(reply != null) {// some pipes are not aware of the space in the adjacent inventory, so they return null
 			if(reply.maxNumberOfItems < wanted) {
@@ -279,11 +281,11 @@ outer:
 	
 	private int getTotalItemCount(ItemIdentifier item) {
 		
-		if (_invProvider.getPointedInventory() == null) return 0;
+		IInventoryUtil inv = _invProvider.getPointedInventory(_extractionMode,true);
+		if (inv == null) return 0;
 		
 		if(!filterAllowsItem(item)) return 0;
 		
-		IInventoryUtil inv = getAdaptedUtil(_invProvider.getPointedInventory());
 		return inv.itemCount(item);
 	}
 	
@@ -294,26 +296,6 @@ outer:
 	private boolean itemIsFiltered(ItemIdentifier item){
 		return _filterInventory.containsItem(item);
 	}
-	
-	private IInventoryUtil getAdaptedUtil(IInventory base){
-		switch(_extractionMode){
-			case LeaveFirst:
-				return SimpleServiceLocator.inventoryUtilFactory.getHidingInventoryUtil(base, false, false, 1, 0);
-			case LeaveLast:
-				return SimpleServiceLocator.inventoryUtilFactory.getHidingInventoryUtil(base, false, false, 0, 1);
-			case LeaveFirstAndLast:
-				return SimpleServiceLocator.inventoryUtilFactory.getHidingInventoryUtil(base, false, false, 1, 1);
-			case Leave1PerStack:
-				return SimpleServiceLocator.inventoryUtilFactory.getHidingInventoryUtil(base, true, false, 0, 0);
-			case Leave1PerType:
-				return SimpleServiceLocator.inventoryUtilFactory.getHidingInventoryUtil(base, false, true, 0, 0);
-			default:
-				break;
-		}
-		return SimpleServiceLocator.inventoryUtilFactory.getHidingInventoryUtil(base, false, false, 0, 0);
-	}
-
-
 	
 	/*** GUI STUFF ***/
 	
@@ -352,13 +334,35 @@ outer:
 		return list;
 	}
 
-	@Override
-	public void registerPosition(int xCoord, int yCoord, int zCoord, int slot) {
-		this.xCoord = xCoord;
-		this.yCoord = yCoord;
-		this.zCoord = zCoord;
+
+	@Override 
+	public void registerSlot(int slot) {
 		this.slot = slot;
 	}
+	
+	@Override 
+	public final int getX() {
+		if(slot>=0)
+			return this._invProvider.getX();
+		else 
+			return 0;
+	}
+	@Override 
+	public final int getY() {
+		if(slot>=0)
+			return this._invProvider.getY();
+		else 
+			return -1;
+	}
+	
+	@Override 
+	public final int getZ() {
+		if(slot>=0)
+			return this._invProvider.getZ();
+		else 
+			return -1-slot;
+	}
+
 	
 	private void checkUpdate(EntityPlayer player) {
 		if(localModeWatchers.size() == 0 && player == null)
@@ -374,20 +378,24 @@ outer:
 			oldList.clear();
 			oldList.ensureCapacity(displayList.size());
 			oldList.addAll(displayList);
-			MainProxy.sendCompressedToPlayerList(new PacketModuleInvContent(NetworkConstants.MODULE_INV_CONTENT, xCoord, yCoord, zCoord, slot, displayList).getPacket(), localModeWatchers);
+//TODO 		MainProxy.sendCompressedToPlayerList(new PacketModuleInvContent(NetworkConstants.MODULE_INV_CONTENT, getX(), getY(), getZ(), slot, displayList).getPacket(), localModeWatchers);
+			MainProxy.sendToPlayerList(PacketHandler.getPacket(ModuleInventory.class).setSlot(slot).setIdentList(displayList).setPosX(getX()).setPosY(getY()).setPosZ(getZ()).setCompressable(true), localModeWatchers);
 		} else if(player != null) {
-			MainProxy.sendCompressedPacketToPlayer(new PacketModuleInvContent(NetworkConstants.MODULE_INV_CONTENT, xCoord, yCoord, zCoord, slot, displayList).getPacket(), (Player)player);
+//TODO 		MainProxy.sendCompressedPacketToPlayer(new PacketModuleInvContent(NetworkConstants.MODULE_INV_CONTENT, getX(), getY(), getZ(), slot, displayList).getPacket(), (Player)player);
+			MainProxy.sendPacketToPlayer(PacketHandler.getPacket(ModuleInventory.class).setSlot(slot).setIdentList(displayList).setPosX(getX()).setPosY(getY()).setPosZ(getZ()).setCompressable(true), (Player)player);
 		}
 	}
 
 	@Override
 	public void startWatching() {
-		MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_START_WATCHING_MODULE, xCoord, yCoord, zCoord, slot).getPacket());
+//TODO 	MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_START_WATCHING_MODULE, getX(), getY(), getZ(), slot).getPacket());
+		MainProxy.sendPacketToServer(PacketHandler.getPacket(HUDStartModuleWatchingPacket.class).setInteger(slot).setPosX(getX()).setPosY(getY()).setPosZ(getZ()));
 	}
 
 	@Override
 	public void stopWatching() {
-		MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_START_WATCHING_MODULE, xCoord, yCoord, zCoord, slot).getPacket());
+//TODO 	MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_START_WATCHING_MODULE, getX(), getY(), getZ(), slot).getPacket());
+		MainProxy.sendPacketToServer(PacketHandler.getPacket(HUDStartModuleWatchingPacket.class).setInteger(slot).setPosX(getX()).setPosY(getY()).setPosZ(getZ()));
 	}
 
 	@Override
@@ -444,5 +452,11 @@ outer:
 	@Override
 	public boolean recievePassive() {
 		return false;
+	}
+
+	@Override
+	@SideOnly(Side.CLIENT)
+	public Icon getIconTexture(IconRegister register) {
+		return register.registerIcon("logisticspipes:itemModule/ModuleProvider");
 	}
 }

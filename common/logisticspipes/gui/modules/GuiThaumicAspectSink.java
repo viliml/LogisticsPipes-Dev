@@ -2,13 +2,14 @@ package logisticspipes.gui.modules;
 
 import logisticspipes.modules.ModuleThaumicAspectSink;
 import logisticspipes.network.GuiIDs;
+import logisticspipes.pipes.basic.CoreRoutedPipe;
 import logisticspipes.proxy.SimpleServiceLocator;
+import logisticspipes.utils.SimpleInventory;
 import logisticspipes.utils.gui.BasicGuiHelper;
 import logisticspipes.utils.gui.DummyContainer;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.inventory.IInventory;
-import buildcraft.core.utils.SimpleInventory;
 import buildcraft.transport.Pipe;
 
 public class GuiThaumicAspectSink extends GuiWithPreviousGuiContainer {
@@ -16,7 +17,7 @@ public class GuiThaumicAspectSink extends GuiWithPreviousGuiContainer {
 	private final ModuleThaumicAspectSink _module;
 	private final SimpleInventory tmpInv;
 	
-	public GuiThaumicAspectSink(IInventory playerInventory, Pipe pipe, ModuleThaumicAspectSink itemSink, GuiScreen previousGui, int slot) {
+	public GuiThaumicAspectSink(IInventory playerInventory, CoreRoutedPipe pipe, ModuleThaumicAspectSink itemSink, GuiScreen previousGui, int slot) {
 		super(null, pipe, previousGui);
 		
 		_module = itemSink;
@@ -44,14 +45,14 @@ public class GuiThaumicAspectSink extends GuiWithPreviousGuiContainer {
 
 	@Override
 	public int getGuiID() {
-		return GuiIDs.GUI_Module_ModBased_ItemSink_ID;
+		return GuiIDs.GUI_Module_Thaumic_AspectSink_ID;
 	}
 
 	@Override
 	protected void actionPerformed(GuiButton par1GuiButton) {
 		if(par1GuiButton.id == 0 && tmpInv.getStackInSlot(0) != null) {
 			_module.handleItem(tmpInv.getStackInSlot(0));
-			tmpInv.setInventorySlotContents(0, null);
+			tmpInv.clearInventorySlotContents(0);
 		} else if(par1GuiButton.id == 1) {
 			_module.clearAspectList();
 		} else {

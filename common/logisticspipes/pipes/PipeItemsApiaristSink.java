@@ -1,7 +1,6 @@
 package logisticspipes.pipes;
 
-import logisticspipes.interfaces.ILogisticsModule;
-import logisticspipes.logic.TemporaryLogic;
+import logisticspipes.modules.LogisticsModule;
 import logisticspipes.modules.ModuleApiaristSink;
 import logisticspipes.pipes.basic.CoreRoutedPipe;
 import logisticspipes.textures.Textures;
@@ -13,7 +12,7 @@ public class PipeItemsApiaristSink extends CoreRoutedPipe {
 	private ModuleApiaristSink sinkModule;
 
 	public PipeItemsApiaristSink(int itemID) {
-		super(new TemporaryLogic(), itemID);
+		super(itemID);
 		sinkModule = new ModuleApiaristSink();
 		sinkModule.registerHandler(null, null, this, this);
 	}
@@ -24,7 +23,7 @@ public class PipeItemsApiaristSink extends CoreRoutedPipe {
 	}
 
 	@Override
-	public ILogisticsModule getLogisticsModule() {
+	public LogisticsModule getLogisticsModule() {
 		return sinkModule;
 	}
 
@@ -36,7 +35,7 @@ public class PipeItemsApiaristSink extends CoreRoutedPipe {
 	@Override
 	public void setTile(TileEntity tile) {
 		super.setTile(tile);
-		sinkModule.registerPosition(xCoord, yCoord, zCoord, 0);
+		sinkModule.registerSlot(0);
 	}
 
 	@Override

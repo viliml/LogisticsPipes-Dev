@@ -8,20 +8,21 @@
 
 package logisticspipes.gui.orderer;
 
-import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedList;
-import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 
 import logisticspipes.config.Configs;
 import logisticspipes.gui.popup.GuiRequestPopup;
 import logisticspipes.network.GuiIDs;
-import logisticspipes.network.NetworkConstants;
-import logisticspipes.network.packets.PacketRequestGuiContent;
-import logisticspipes.network.packets.PacketRequestSubmit;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.orderer.RequestComponentPacket;
+import logisticspipes.network.packets.orderer.RequestSubmitPacket;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.utils.ItemIdentifier;
 import logisticspipes.utils.ItemIdentifierStack;
-import logisticspipes.utils.ItemMessage;
 import logisticspipes.utils.gui.BasicGuiHelper;
 import logisticspipes.utils.gui.DummyContainer;
 import logisticspipes.utils.gui.GuiCheckBox;
@@ -29,15 +30,22 @@ import logisticspipes.utils.gui.IItemSearch;
 import logisticspipes.utils.gui.ISubGuiControler;
 import logisticspipes.utils.gui.KraphtBaseGuiScreen;
 import logisticspipes.utils.gui.SmallGuiButton;
+import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.GuiButton;
+import net.minecraft.client.renderer.OpenGlHelper;
+import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.entity.RenderItem;
+import net.minecraft.enchantment.Enchantment;
+import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.ResourceLocation;
 
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
 
 public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSearch {
 
@@ -47,7 +55,7 @@ public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSea
 	public final LinkedList<ItemIdentifierStack>_allItems = new LinkedList<ItemIdentifierStack>(); 
 	protected String searchinput1 = "";
 	protected String searchinput2 = "";
-	protected boolean editsearch = false;
+	protected boolean editsearch = true;
 	protected boolean editsearchb = false;
 	protected boolean displaycursor = true;
 	protected long oldSystemTime = 0;
@@ -55,8 +63,8 @@ public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSea
 	
 	protected RenderItem renderItem = new RenderItem();
 	
-	protected int lastClickedx = 0;
-	protected int lastClickedy = 0;
+	protected int lastClickedx = -10000000;
+	protected int lastClickedy = -10000000;
 	protected int lastClickedk = 0;
 	
 	protected final String _title = "Request items";
@@ -77,7 +85,7 @@ public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSea
 	
 	public static int dimensioncache;
 	public static long cachetime;
-	
+
 	public GuiOrderer(int x, int y, int z, int dim, EntityPlayer entityPlayer) {
 		super(220,240,0,0);
 		xCoord = x;
@@ -94,26 +102,33 @@ public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSea
 
 	public abstract void refreshItems();
 
-	public void handlePacket(PacketRequestGuiContent packet) {
+	public void handlePacket(Collection<ItemIdentifierStack> allItems) {
 		listbyserver = true;
 		_allItems.clear();
-		_allItems.addAll(packet._allItems);
+		_allItems.addAll(allItems);
+		Collections.sort(_allItems, new ItemIdentifierStack.orderedComparitor());
 		keepLastItemSelected();
 	}
 
 	private void keepLastItemSelected() {
-		if(selectedItem == null) return;
+		if (selectedItem == null)
+			return;
 		int itemindex = 0;
+		
+		// GL11.glTranslatef((float) guiLeft, (float) guiTop, 0.0F);
+		// Field: 10, 18, xSize - 10, ySize - 82
 		int panelxSize = 20;
 		int panelySize = 20;
+		
 		ItemIdentifier selected = selectedItem.getItem();
-		for(ItemIdentifierStack itemStack : _allItems) {
+		for (ItemIdentifierStack itemStack : _allItems) {
 			ItemIdentifier item = itemStack.getItem();
-			if(!itemSearched(item)) continue;
-			if(item.equals(selected)) {
+			if (!itemSearched(item))
+				continue;
+			if (item.equals(selected)) {
 				page = itemindex / 70;
-				lastClickedy = guiTop + 18 + panelySize * ((itemindex % 70) / 10);
-				lastClickedx = guiLeft + 10 + panelxSize * (itemindex % 10);
+				lastClickedx = guiLeft + 10 + (panelxSize * (itemindex % 10));
+				lastClickedy = guiTop + 18 + (panelySize * ((itemindex % 70) / 10));
 				return;
 			}
 			itemindex++;
@@ -124,6 +139,17 @@ public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSea
 	@Override
 	public void initGui() {
 		super.initGui();
+		
+		this.guiLeft =  width/2 - xSize/2 + xCenterOffset;
+		this.guiTop = height/2 - ySize/2  + yCenterOffset;
+		
+		this.right = width/2 + xSize/2 + xCenterOffset;
+		this.bottom = height/2 + ySize/2 + yCenterOffset;
+		
+		this.guiLeft += this.getLeftAddition();
+		this.xCenter = (right + guiLeft) / 2;
+		this.yCenter = (bottom + guiTop) / 2;
+		
 		buttonList.clear();
 		buttonList.add(new GuiButton(0, right - 55, bottom - 25, 50,20,"Request")); // Request
 		buttonList.add(new SmallGuiButton(1, right - 15, guiTop + 5, 10 ,10 ,">")); // Next page
@@ -135,12 +161,19 @@ public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSea
 		buttonList.add(new SmallGuiButton(7, xCenter + 38, bottom - 26, 15, 10, "++")); // +10
 		buttonList.add(new SmallGuiButton(11, xCenter + 26, bottom - 15, 26, 10, "+++")); // +64
 		buttonList.add(new GuiCheckBox(8, guiLeft + 9, bottom - 60, 14, 14, Configs.DISPLAY_POPUP)); // Popup
+		this.guiLeft -= this.getLeftAddition();
 	}
 	
 	@Override
 	public boolean doesGuiPauseGame() {
 		return false;
 	}
+	
+	protected int getLeftAddition() {
+		return 0;
+	}
+	
+	private static final ResourceLocation TEXTURE = new ResourceLocation("textures/gui/icons.png");
 	
 	@Override
 	public void drawGuiContainerBackgroundLayer(float f, int i, int j) {
@@ -153,6 +186,8 @@ public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSea
 		if (page > maxPage){
 			page = maxPage;
 		}
+		
+		this.guiLeft += this.getLeftAddition();
 		
 		fontRenderer.drawString(_title, guiLeft + fontRenderer.getStringWidth(_title) / 2, guiTop + 6, 0x404040);
 		String pageString = "Page " + (page + 1) + " / " + (maxPage + 1);
@@ -205,73 +240,116 @@ public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSea
 				editsearch = false;
 			}
 		}
-		
+
+		GL11.glPushMatrix();
+		GL11.glTranslatef(guiLeft, guiTop, 0.0F);
+		GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+
+		drawRect(10, 18, xSize - 10 - this.getLeftAddition(), ySize - 82, Colors.MiddleGrey);
+
+		tooltip = null;
 		int ppi = 0;
-		
 		int panelxSize = 20;
 		int panelySize = 20;
+		int x = 12;
+		int y = 20;
+		int mouseX = Mouse.getX() * this.width / this.mc.displayWidth;
+		int mouseY = this.height - Mouse.getY() * this.height / this.mc.displayHeight - 1;
 
-		//if (selectedItem != null){
-		//	String friendlyName = selectedItem.getFriendlyName();
-		//	fontRenderer.drawString(friendlyName, xCenter - fontRenderer.getStringWidth(friendlyName) / 2, bottom - 39, 0x404040);
-		//}
-		
-		tooltip = null;
-		
-		drawRect(guiLeft + 6, guiTop + 16, right - 12, bottom - 84, Colors.MiddleGrey);
-		
-		if(!listbyserver) {
-			int graphic = ((int)(System.currentTimeMillis() / 250) % 5);
-//			GL11.glBindTexture(GL11.GL_TEXTURE_2D, this.mc.renderEngine.getTexture());
-			mc.renderEngine.bindTexture("/gui/icons.png");
-			GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-            Tessellator var9 = Tessellator.instance;
-            var9.startDrawingQuads();
-            int xPosition = xCenter - 50;
-            int yPosition = guiTop + 40;
-            var9.addVertexWithUV(xPosition			, yPosition + 100		, zLevel, 0.04	, 0.72 + (graphic * 0.03125));
-            var9.addVertexWithUV(xPosition + 100	, yPosition + 100		, zLevel, 0.08	, 0.72 + (graphic * 0.03125));
-            var9.addVertexWithUV(xPosition + 100	, yPosition				, zLevel, 0.08	, 0.69 + (graphic * 0.03125));
-            var9.addVertexWithUV(xPosition			, yPosition				, zLevel, 0.04	, 0.69 + (graphic * 0.03125));
-            var9.draw();
+		if (!listbyserver) {
+			int graphic = ((int) (System.currentTimeMillis() / 250) % 5);
+			// GL11.glBindTexture(GL11.GL_TEXTURE_2D,
+			// this.mc.renderEngine.getTexture());
+			mc.renderEngine.func_110577_a(TEXTURE);
+			Tessellator tesselator = Tessellator.instance;
+			tesselator.startDrawingQuads();
+			int xPosition = (xSize / 2) - 50;
+			int yPosition = 40;
+			tesselator.addVertexWithUV(xPosition, yPosition + 100, zLevel, 0.04, 0.72 + (graphic * 0.03125));
+			tesselator.addVertexWithUV(xPosition + 100, yPosition + 100, zLevel, 0.08, 0.72 + (graphic * 0.03125));
+			tesselator.addVertexWithUV(xPosition + 100, yPosition, zLevel, 0.08, 0.69 + (graphic * 0.03125));
+			tesselator.addVertexWithUV(xPosition, yPosition, zLevel, 0.04, 0.69 + (graphic * 0.03125));
+			tesselator.draw();
 		} else {
-			for(ItemIdentifierStack itemStack : _allItems) {
-				ItemIdentifier item = itemStack.getItem();
-				if(!itemSearched(item)) continue;
+			RenderHelper.enableGUIStandardItemLighting();
+			GL11.glEnable(GL12.GL_RESCALE_NORMAL);
+			OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240 / 1.0F, 240 / 1.0F);
+			GL11.glDisable(GL11.GL_DEPTH_TEST);
+			GL11.glDisable(GL11.GL_LIGHTING);
+
+			for (ItemIdentifierStack itemIdentifierStack : _allItems) {
+				ItemIdentifier item = itemIdentifierStack.getItem();
+				if (!itemSearched(item))
+					continue;
 				ppi++;
-				
-				if (ppi <= 70 * page) continue;
-				if (ppi > 70 * (page+1)) break;
-				int row = ((ppi - 1) % 70) / 10;
-				int column = (ppi - 1) % 10;
-				ItemStack st = itemStack.unsafeMakeNormalStack();
-				int x = guiLeft + 10 + panelxSize * column;
-				int y = guiTop + 18 + panelySize * row;
-	
-				GL11.glDisable(2896 /*GL_LIGHTING*/);
-				int mouseX = Mouse.getX() * this.width / this.mc.displayWidth;
-	            int mouseY = this.height - Mouse.getY() * this.height / this.mc.displayHeight - 1;
-				
-            	if (mouseX >= x && mouseX < x + panelxSize &&
-						mouseY >= y && mouseY < y + panelySize) {
-					drawRect(x - 3, y - 1, x + panelxSize - 3, y + panelySize - 3, Colors.Black);
-					drawRect(x - 2, y - 0, x + panelxSize - 4, y + panelySize - 4, Colors.DarkGrey);
-					
-					tooltip = new Object[]{mouseX,mouseY,st};
+
+				if (ppi <= 70 * page)
+					continue;
+				if (ppi > 70 * (page + 1))
+					break;
+
+				ItemStack itemstack = itemIdentifierStack.unsafeMakeNormalStack();
+				// -2 on both, because field starts there (see black rect below)
+				int realX = guiLeft + x - 2;
+				int realY = guiTop + y - 2;
+
+				if (mouseX >= realX && mouseX < realX + panelxSize && mouseY >= realY && mouseY < realY + panelySize) {
+					drawRect(x - 2, y - 2, x + panelxSize - 2, y + panelySize - 2, Colors.Black);
+					drawRect(x - 1, y - 1, x + panelxSize - 3, y + panelySize - 3, Colors.DarkGrey);
+
+					tooltip = new Object[] { mouseX, mouseY, itemstack };
 				}
-				
-				if (lastClickedx >= x && lastClickedx < x + panelxSize &&
-						lastClickedy >= y && lastClickedy < y + panelySize){
-					selectedItem = itemStack;
-					drawRect(x - 4, y - 2, x + panelxSize - 2, y + panelySize - 2, Colors.Black);
-					drawRect(x - 3, y - 1, x + panelxSize - 3, y + panelySize - 3, Colors.White);
-					drawRect(x - 2, y - 0, x + panelxSize - 4, y + panelySize - 4, Colors.DarkGrey);
-					specialItemRendering(item, x, y);
+
+				if (lastClickedx >= realX && lastClickedx < realX + panelxSize && lastClickedy >= realY && lastClickedy < realY + panelySize) {
+					selectedItem = itemIdentifierStack;
+					drawRect(x - 2, y - 2, x + panelxSize - 2, y + panelySize - 2, Colors.Black);
+					drawRect(x - 1, y - 1, x + panelxSize - 3, y + panelySize - 3, Colors.LightGrey);
+					drawRect(x, y, x + panelxSize - 4, y + panelySize - 4, Colors.DarkGrey);
+					specialItemRendering(itemIdentifierStack.getItem(), x, y);
+				}
+
+				String s;
+				if (itemstack.stackSize == 1) {
+					s = "";
+				} else if (itemstack.stackSize < 1000) {
+					s = itemstack.stackSize + "";
+				} else if (itemstack.stackSize < 100000) {
+					s = itemstack.stackSize / 1000 + "K";
+				} else if (itemstack.stackSize < 1000000) {
+					s = "0M" + itemstack.stackSize / 100000;
+				} else {
+					s = itemstack.stackSize / 1000000 + "M";
+				}
+
+				FontRenderer font = itemstack.getItem().getFontRenderer(itemstack);
+				if (font == null)
+					font = fontRenderer;
+
+				itemRenderer.zLevel = 100.0F;
+				GL11.glEnable(GL11.GL_DEPTH_TEST);
+				GL11.glEnable(GL11.GL_LIGHTING);
+				itemRenderer.renderItemAndEffectIntoGUI(font, this.mc.renderEngine, itemstack, x, y);
+				// With empty string, because damage value indicator struggles with the depth
+				itemRenderer.renderItemOverlayIntoGUI(font, this.mc.renderEngine, itemstack, x, y, "");
+				GL11.glDisable(GL11.GL_LIGHTING);
+				GL11.glDisable(GL11.GL_DEPTH_TEST);
+				itemRenderer.zLevel = 0.0F;
+
+				// Draw number
+				font.drawStringWithShadow(s, x + 19 - 2 - font.getStringWidth(s), y + 6 + 3, 16777215);
+
+				x += panelxSize;
+				if (x > 200) {
+					x = 12;
+					y += panelySize;
 				}
 			}
-			BasicGuiHelper.renderItemIdentifierStackListIntoGui(_allItems, this, page, guiLeft + 10, guiTop + 18, 10, 70, panelxSize, panelySize, mc, true, false);
+
+			GL11.glEnable(GL11.GL_DEPTH_TEST);
 		}
-		GL11.glDisable(2896 /*GL_LIGHTING*/);
+		GL11.glPopMatrix();
+
+		this.guiLeft -= this.getLeftAddition();
 	}
 	
 	public abstract void specialItemRendering(ItemIdentifier item, int x, int y);
@@ -281,12 +359,23 @@ public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSea
 		if(super.hasSubGui()) return;
 		BasicGuiHelper.displayItemToolTip(tooltip, this, this.zLevel, guiLeft, guiTop);
 	}
-	
+
+	@SuppressWarnings("unchecked")
 	@Override
 	public boolean itemSearched(ItemIdentifier item) {
 		if(searchinput1 == "" && searchinput2 == "") return true;
 		if(isSearched(item.getFriendlyName().toLowerCase(),(searchinput1 + searchinput2).toLowerCase())) return true;
 		if(isSearched(String.valueOf(item.itemID),(searchinput1 + searchinput2))) return true;
+		//Enchantment? Enchantment!
+		Map<Integer,Integer> enchantIdLvlMap = EnchantmentHelper.getEnchantments(item.unsafeMakeNormalStack(1));
+		for(Entry<Integer,Integer> e:enchantIdLvlMap.entrySet()) {
+			if (e.getKey().intValue() < Enchantment.enchantmentsList.length && Enchantment.enchantmentsList[e.getKey()] != null) {
+				String enchantname = Enchantment.enchantmentsList[e.getKey()].getTranslatedName(e.getValue());
+				if(enchantname != null) {
+					if(isSearched(enchantname.toLowerCase(),(searchinput1 + searchinput2).toLowerCase())) return true;
+				}
+			}
+		}
 		return false;
 	}
 	
@@ -330,7 +419,7 @@ public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSea
 	public void handleMouseInputSub() {
 		boolean isShift = Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
 		boolean isControl = Keyboard.isKeyDown(Keyboard.KEY_LCONTROL) || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL);
-		int wheel = org.lwjgl.input.Mouse.getDWheel() / 120;
+		int wheel = Mouse.getEventDWheel() / 120;
 		if (wheel == 0){
 			super.handleMouseInputSub();
 			return;
@@ -416,65 +505,22 @@ public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSea
 		super.handleMouseInputSub();
 	}
 
-	public void handleRequestAnswer(ItemMessage itemMessage, boolean error, ISubGuiControler control, EntityPlayer player) {
-		List<ItemMessage> list = new ArrayList<ItemMessage>();
-		list.add(itemMessage);
-		handleRequestAnswer(list, error, control, player);
-	}
-
-	public void handleRequestAnswer(List<ItemMessage> items, boolean error, ISubGuiControler control, EntityPlayer player) {
-		if (!error){
-			ArrayList<String> msg = new ArrayList<String>();
-			msg.add("You are missing:");
-			for (ItemMessage item : items){
-				if(!Configs.DISPLAY_POPUP) {
-					player.addChatMessage("Missing: " + item.toString());
-				} else {
-					msg.add(item.toString());
-				}
-			}
-			if(Configs.DISPLAY_POPUP) {
-				control.setSubGui(new GuiRequestPopup(_entityPlayer, msg.toArray()));
-			}
+	public void handleRequestAnswer(Collection<ItemIdentifierStack> items, boolean error, ISubGuiControler control, EntityPlayer player) {
+		while(control.hasSubGui()) {
+			control = control.getSubGui();
+		}
+		if (error) {
+			control.setSubGui(new GuiRequestPopup(_entityPlayer, "You are missing:", items));
 		} else {
-			if(Configs.DISPLAY_POPUP) {
-				if(control.hasSubGui()) {
-					ISubGuiControler newcontroller = control;
-					while(newcontroller.hasSubGui()) {
-						newcontroller = newcontroller.getSubGui();
-					}
-					newcontroller.setSubGui(new GuiRequestPopup(_entityPlayer, "Request successful!",items.toArray()));
-				} else {
-					control.setSubGui(new GuiRequestPopup(_entityPlayer, "Request successful!",items.toArray()));
-				}
-			} else {
-				for(ItemMessage item:items) {
-					player.addChatMessage("Requested: " + item);
-				}
-				player.addChatMessage("Request successful!");
-			}
+			control.setSubGui(new GuiRequestPopup(_entityPlayer, "Request successful!", items));
 		}
 	}
 
-	public void handleSimulateAnswer(List<ItemMessage> used, List<ItemMessage> missing, ISubGuiControler control, EntityPlayer player) {
-		if(Configs.DISPLAY_POPUP) {
-			if(control.hasSubGui()) {
-				ISubGuiControler newcontroller = control;
-				while(newcontroller.hasSubGui()) {
-					newcontroller = newcontroller.getSubGui();
-				}
-				newcontroller.setSubGui(new GuiRequestPopup(_entityPlayer, "Components: ", used.toArray(), "Missing: ", missing.toArray()));
-			} else {
-				control.setSubGui(new GuiRequestPopup(_entityPlayer, "Components: ", used.toArray(), "Missing: ", missing.toArray()));
-			}
-		} else {
-			for(ItemMessage item:used) {
-				player.addChatMessage("Component: " + item);
-			}
-			for(ItemMessage item:missing) {
-				player.addChatMessage("Missing: " + item);
-			}
+	public void handleSimulateAnswer(Collection<ItemIdentifierStack> used, Collection<ItemIdentifierStack> missing, ISubGuiControler control, EntityPlayer player) {
+		while(control.hasSubGui()) {
+			control = control.getSubGui();
 		}
+		control.setSubGui(new GuiRequestPopup(_entityPlayer, "Components: ", used, "Missing: ", missing));
 	}
 
 	@Override
@@ -485,21 +531,9 @@ public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSea
 		clickWasButton = true;
 		
 		if (guibutton.id == 0 && selectedItem != null){
-			/*if(!CoreProxy.isRemote()) {
-				LogisticsRequest request = new LogisticsRequest(selectedItem, requestCount, this._itemRequester);
-				LinkedList<ItemMessage> errors = new LinkedList<ItemMessage>();
-				boolean result = LogisticsManager.Request(request, this._itemRequester.getRouter().getRoutersByCost(), errors, _entityPlayer);
-				if(result) {
-					handleRequestAnswer(new ItemMessage(selectedItem,requestCount),result, this, _entityPlayer);
-					refreshItems();
-				} else {
-					handleRequestAnswer(errors,result, this, _entityPlayer);
-				}
-				refreshItems();
-			} else {*/
-				MainProxy.sendPacketToServer(new PacketRequestSubmit(xCoord,yCoord,zCoord,dimension,selectedItem.getItem(),requestCount).getPacket());
-				refreshItems();
-			//}
+//TODO 		MainProxy.sendPacketToServer(new PacketRequestSubmit(NetworkConstants.REQUEST_SUBMIT,xCoord,yCoord,zCoord,dimension,selectedItem.getItem(),requestCount).getPacket());
+			MainProxy.sendPacketToServer(PacketHandler.getPacket(RequestSubmitPacket.class).setDimension(dimension).setStack(selectedItem.getItem().makeStack(requestCount)).setPosX(xCoord).setPosY(yCoord).setPosZ(zCoord));
+			refreshItems();
 		} else if (guibutton.id == 1){
 			nextPage();
 		} else if (guibutton.id == 2) {
@@ -529,7 +563,8 @@ public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSea
 			Configs.DISPLAY_POPUP = button.change();
 			Configs.savePopupState();
 		} else if (guibutton.id == 13 && selectedItem != null){
-			MainProxy.sendPacketToServer(new PacketRequestSubmit(xCoord,yCoord,zCoord,dimension,selectedItem.getItem(), requestCount, NetworkConstants.REQUEST_COMPONENTS).getPacket());
+//TODO 		MainProxy.sendPacketToServer(new PacketRequestSubmit(NetworkConstants.REQUEST_COMPONENTS, xCoord,yCoord,zCoord,dimension,selectedItem.getItem(), requestCount).getPacket());
+			MainProxy.sendPacketToServer(PacketHandler.getPacket(RequestComponentPacket.class).setDimension(dimension).setStack(selectedItem.getItem().makeStack(requestCount)).setPosX(xCoord).setPosY(yCoord).setPosZ(zCoord));
 		}
 		
 		super.actionPerformed(guibutton);
@@ -589,7 +624,8 @@ public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSea
 
 	@Override
 	protected void keyTyped(char c, int i) {
-		if(editsearch) {
+		// Track everything except Escape when in search bar
+		if(editsearch && i != 1) {
 			if (c == 13) {
 				editsearch = false;
 				return;
@@ -614,8 +650,6 @@ public abstract class GuiOrderer extends KraphtBaseGuiScreen implements IItemSea
 					searchinput1 += searchinput2.substring(0,1);
 					searchinput2 = searchinput2.substring(1);
 				}
-			} else if(i == 1) { //ESC
-				editsearch = false;
 			} else if(i == 28) { //Enter
 				editsearch = false;
 			} else if(i == 199) { //Pos

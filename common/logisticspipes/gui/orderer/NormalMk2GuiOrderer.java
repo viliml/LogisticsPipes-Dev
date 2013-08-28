@@ -1,8 +1,9 @@
 package logisticspipes.gui.orderer;
 
 import logisticspipes.gui.popup.GuiDiskPopup;
-import logisticspipes.network.NetworkConstants;
-import logisticspipes.network.packets.PacketCoordinates;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.orderer.DiskDropPacket;
+import logisticspipes.network.packets.orderer.DiskRequestConectPacket;
 import logisticspipes.pipes.PipeItemsRequestLogisticsMk2;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.proxy.SimpleServiceLocator;
@@ -20,9 +21,10 @@ public class NormalMk2GuiOrderer extends NormalGuiOrderer {
 	private SmallGuiButton Macrobutton;
 	
 	public NormalMk2GuiOrderer(PipeItemsRequestLogisticsMk2 RequestPipeMK2 ,EntityPlayer entityPlayer) {
-		super(RequestPipeMK2.xCoord, RequestPipeMK2.yCoord, RequestPipeMK2.zCoord, MainProxy.getDimensionForWorld(RequestPipeMK2.worldObj), entityPlayer);
+		super(RequestPipeMK2.getX(), RequestPipeMK2.getY(), RequestPipeMK2.getZ(), MainProxy.getDimensionForWorld(RequestPipeMK2.getWorld()), entityPlayer);
 		pipe = RequestPipeMK2;
-		MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.DISK_REQUEST_CONTENT, pipe.xCoord, pipe.yCoord, pipe.zCoord).getPacket());
+//TODO 	MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.DISK_REQUEST_CONTENT, pipe.getX(), pipe.getY(), pipe.getZ()).getPacket());
+		MainProxy.sendPacketToServer(PacketHandler.getPacket(DiskRequestConectPacket.class).setPosX(pipe.getX()).setPosY(pipe.getY()).setPosZ(pipe.getZ()));
 	}
 	
 	@SuppressWarnings("unchecked")
@@ -50,7 +52,8 @@ public class NormalMk2GuiOrderer extends NormalGuiOrderer {
 		//Click on Disk
 		if(lastClickedx != -10000000 &&	lastClickedy != -10000000) {
 			if (lastClickedx >= right - 39 && lastClickedx < right - 19 && lastClickedy >= bottom - 47 && lastClickedy < bottom - 27) {
-				MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.DISK_DROP, pipe.xCoord, pipe.yCoord, pipe.zCoord).getPacket());
+//TODO 			MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.DISK_DROP, pipe.getX(), pipe.getY(), pipe.getZ()).getPacket());
+				MainProxy.sendPacketToServer(PacketHandler.getPacket(DiskDropPacket.class).setPosX(pipe.getX()).setPosY(pipe.getY()).setPosZ(pipe.getZ()));
 				lastClickedx = -10000000;
 				lastClickedy = -10000000;
 			}
@@ -76,7 +79,8 @@ public class NormalMk2GuiOrderer extends NormalGuiOrderer {
 	protected void actionPerformed(GuiButton guibutton) {
 		super.actionPerformed(guibutton);
 		if (guibutton.id == 12) {
-			MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.DISK_REQUEST_CONTENT, pipe.xCoord, pipe.yCoord, pipe.zCoord).getPacket());
+//TODO 		MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.DISK_REQUEST_CONTENT, pipe.getX(), pipe.getY(), pipe.getZ()).getPacket());
+			MainProxy.sendPacketToServer(PacketHandler.getPacket(DiskRequestConectPacket.class).setPosX(pipe.getX()).setPosY(pipe.getY()).setPosZ(pipe.getZ()));
 			this.setSubGui(new GuiDiskPopup(this));
 		}
 	}
@@ -87,6 +91,8 @@ public class NormalMk2GuiOrderer extends NormalGuiOrderer {
 
 	@Override
 	public void specialItemRendering(ItemIdentifier item, int x, int y) {
-		SimpleServiceLocator.thaumCraftProxy.renderAspectsDown(item.unsafeMakeNormalStack(1), guiLeft - 20, guiTop + 10, this);
+		GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+		SimpleServiceLocator.thaumCraftProxy.renderAspectsDown(item.unsafeMakeNormalStack(1), -20, 10, this);
+		GL11.glPopAttrib();
 	}
 }

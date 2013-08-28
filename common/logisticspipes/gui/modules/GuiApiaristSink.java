@@ -4,8 +4,9 @@ import logisticspipes.modules.ModuleApiaristSink;
 import logisticspipes.modules.ModuleApiaristSink.FilterType;
 import logisticspipes.modules.ModuleApiaristSink.SinkSetting;
 import logisticspipes.network.GuiIDs;
-import logisticspipes.network.NetworkConstants;
-import logisticspipes.network.packets.PacketPipeBeePacket;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.module.BeeModuleSetBeePacket;
+import logisticspipes.pipes.basic.CoreRoutedPipe;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.proxy.SimpleServiceLocator;
 import logisticspipes.utils.gui.BasicGuiHelper;
@@ -15,14 +16,17 @@ import logisticspipes.utils.gui.ISmallColorRenderSlot;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.Icon;
 import buildcraft.transport.Pipe;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 
 public class GuiApiaristSink extends GuiWithPreviousGuiContainer {
 
 	private final ModuleApiaristSink module;
 	private int slot;
 	
-	public GuiApiaristSink(ModuleApiaristSink module, EntityPlayer player, Pipe pipe, GuiScreen previousGui, int slot) {
+	public GuiApiaristSink(ModuleApiaristSink module, EntityPlayer player, CoreRoutedPipe pipe, GuiScreen previousGui, int slot) {
 		super(new DummyContainer(player.inventory,null), pipe, previousGui);
 		this.module = module;
 		this.slot = slot;
@@ -64,14 +68,10 @@ public class GuiApiaristSink extends GuiWithPreviousGuiContainer {
 		}
 		
 		@Override
-		public int getTextureId() {
-			if(setting.filterType == null) return 0;
-			return setting.filterType.icon;
-		}
-
-		@Override
-		public String getTextureIcon()  {
-			return "/gfx/forestry/gui/analyzer_icons.png";
+		@SideOnly(Side.CLIENT)
+		public Icon getTextureIcon() {
+			if(setting.filterType == null) return null;
+			return SimpleServiceLocator.forestryProxy.getIconFromTextureManager("analyzer/" + setting.filterType.icon);
 		}
 
 		@Override
@@ -85,13 +85,8 @@ public class GuiApiaristSink extends GuiWithPreviousGuiContainer {
 			if(button == 1) {
 				setting.FilterTypeDown();
 			}
-			if(gui.slot != 20) {
-				PacketPipeBeePacket packet = new PacketPipeBeePacket(NetworkConstants.BEE_MODULE_SET_BEE, pipe.xCoord, pipe.yCoord, pipe.zCoord, gui.slot, row, 3, setting.filterType.ordinal());
-				MainProxy.sendPacketToServer(packet.getPacket());
-			} else {
-				PacketPipeBeePacket packet = new PacketPipeBeePacket(NetworkConstants.BEE_MODULE_SET_BEE, module.xCoord, module.yCoord, module.zCoord, gui.slot, row, 3, setting.filterType.ordinal());
-				MainProxy.sendPacketToServer(packet.getPacket());
-			}
+//TODO 		MainProxy.sendPacketToServer(new PacketPipeBeePacket(NetworkConstants.BEE_MODULE_SET_BEE, module.getX(), module.getY(), module.getZ(), gui.slot, row, 3, setting.filterType.ordinal()).getPacket());
+			MainProxy.sendPacketToServer(PacketHandler.getPacket(BeeModuleSetBeePacket.class).setInteger1(gui.slot).setInteger2(row).setInteger3(3).setInteger4(setting.filterType.ordinal()).setPosX(module.getX()).setPosY(module.getY()).setPosZ(module.getZ()));
 		}
 
 		@Override
@@ -158,13 +153,8 @@ public class GuiApiaristSink extends GuiWithPreviousGuiContainer {
 			if(button == 1) {
 				setting.filterGroupDown();
 			}
-			if(gui.slot != 20) {
-				PacketPipeBeePacket packet = new PacketPipeBeePacket(NetworkConstants.BEE_MODULE_SET_BEE, pipe.xCoord, pipe.yCoord, pipe.zCoord, gui.slot, row, 2, setting.filterGroup);
-				MainProxy.sendPacketToServer(packet.getPacket());
-			} else {
-				PacketPipeBeePacket packet = new PacketPipeBeePacket(NetworkConstants.BEE_MODULE_SET_BEE, module.xCoord, module.yCoord, module.zCoord, gui.slot, row, 2, setting.filterGroup);
-				MainProxy.sendPacketToServer(packet.getPacket());
-			}
+//TODO 		MainProxy.sendPacketToServer(new PacketPipeBeePacket(NetworkConstants.BEE_MODULE_SET_BEE, module.getX(), module.getY(), module.getZ(), gui.slot, row, 2, setting.filterGroup).getPacket());
+			MainProxy.sendPacketToServer(PacketHandler.getPacket(BeeModuleSetBeePacket.class).setInteger1(gui.slot).setInteger2(row).setInteger3(2).setInteger4(setting.filterGroup).setPosX(module.getX()).setPosY(module.getY()).setPosZ(module.getZ()));
 		}
 
 		@Override
@@ -250,16 +240,6 @@ public class GuiApiaristSink extends GuiWithPreviousGuiContainer {
 			this.row = row;
 			this.gui = guiApiaristSink;
 		}
-		
-		@Override
-		public int getTextureId() {
-			return 0;
-		}
-
-		@Override
-		public String getTextureIcon()  {
-			return "/gfx/forestry/items/bees.png";
-		}
 
 		@Override
 		public void mouseClicked(int button) {
@@ -284,13 +264,8 @@ public class GuiApiaristSink extends GuiWithPreviousGuiContainer {
 					setting.secondBeeDown();
 				}
 			}
-			if(slot != 20) {
-				PacketPipeBeePacket packet = new PacketPipeBeePacket(NetworkConstants.BEE_MODULE_SET_BEE, pipe.xCoord, pipe.yCoord, pipe.zCoord, gui.slot, row, slotNumber, slotNumber == 0 ? setting.firstBee : setting.secondBee);
-				MainProxy.sendPacketToServer(packet.getPacket());
-			} else {
-				PacketPipeBeePacket packet = new PacketPipeBeePacket(NetworkConstants.BEE_MODULE_SET_BEE, module.xCoord, module.yCoord, module.zCoord, gui.slot, row, slotNumber, slotNumber == 0 ? setting.firstBee : setting.secondBee);
-				MainProxy.sendPacketToServer(packet.getPacket());
-			}
+			//TODO 		MainProxy.sendPacketToServer(new PacketPipeBeePacket(NetworkConstants.BEE_MODULE_SET_BEE, module.getX(), module.getY(), module.getZ(), gui.slot, row, slotNumber, slotNumber == 0 ? setting.firstBee : setting.secondBee));
+			MainProxy.sendPacketToServer(PacketHandler.getPacket(BeeModuleSetBeePacket.class).setInteger1(gui.slot).setInteger2(row).setInteger3(slotNumber).setString1(slotNumber == 0 ? setting.firstBee : setting.secondBee).setPosX(module.getX()).setPosY(module.getY()).setPosZ(module.getZ()));
 		}
 
 		@Override
@@ -310,7 +285,7 @@ public class GuiApiaristSink extends GuiWithPreviousGuiContainer {
 
 		@Override
 		public boolean drawSlotIcon() {
-			return drawSlotBackground() && (slotNumber == 0 ? setting.firstBee : setting.secondBee) != "";
+			return drawSlotBackground() && !(slotNumber == 0 ? setting.firstBee : setting.secondBee).isEmpty();
 		}
 
 		@Override
@@ -335,6 +310,12 @@ public class GuiApiaristSink extends GuiWithPreviousGuiContainer {
 				BasicGuiHelper.renderForestryBeeAt(mc, xPos + 1, yPos + 1, zLevel, setting.secondBee);
 			}
 			return true;
+		}
+
+		@Override
+		@SideOnly(Side.CLIENT)
+		public Icon getTextureIcon() {
+			return null;
 		}
 		
 	}

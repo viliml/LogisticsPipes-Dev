@@ -10,8 +10,10 @@ import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 public class Configs {
 
 	public static final String CATEGORY_MULTITHREAD = "multithread";
+	public static final String CATEGORY_DEBUG 		= "debug";
 
 	// Ids
+	public static int ITEM_BROKEN_ID = 6863;
 	public static int ITEM_LIQUID_CONTAINER_ID = 6864;
 	public static int ITEM_UPGRADE_MANAGER_ID = 6865;
 	public static int ITEM_UPGRADE_ID = 6866;
@@ -28,7 +30,7 @@ public class Configs {
 	public static int LOGISTICSPIPE_CRAFTING_ID = 6877;
 	public static int LOGISTICSPIPE_SATELLITE_ID = 6878;
 	public static int LOGISTICSPIPE_SUPPLIER_ID = 6879;
-	public static int LOGISTICSPIPE_BUILDERSUPPLIER_ID = 6880;
+	//Free ID from Old Builder Supplier = 6880;
 	public static int LOGISTICSPIPE_CHASSI1_ID = 6881;
 	public static int LOGISTICSPIPE_CHASSI2_ID = 6882;
 	public static int LOGISTICSPIPE_CHASSI3_ID = 6883;
@@ -46,12 +48,16 @@ public class Configs {
 	public static int LOGISTICSPIPE_DESTINATION_ID = 6895;
 	public static int LOGISTICSPIPE_CRAFTING_MK3_ID = 6896;
 	public static int LOGISTICSPIPE_FIREWALL_ID = 6897;
+	public static int LOGISTICSPIPE_REQUEST_TABLE_ID = 6898;
 
 	public static int LOGISTICSPIPE_LIQUID_CONNECTOR = 6901;
 	public static int LOGISTICSPIPE_LIQUID_BASIC = 6902;
 	public static int LOGISTICSPIPE_LIQUID_INSERTION = 6903;
 	public static int LOGISTICSPIPE_LIQUID_PROVIDER = 6904;
 	public static int LOGISTICSPIPE_LIQUID_REQUEST = 6905;
+	public static int LOGISTICSPIPE_LIQUID_EXTRACTOR = 6906;
+	public static int LOGISTICSPIPE_LIQUID_SATELLITE = 6907;
+	public static int LOGISTICSPIPE_LIQUID_SUPPLIER_MK2 = 6908;
 
 	public static int LOGISTICSCRAFTINGSIGNCREATOR_ID = 6900;
 
@@ -86,7 +92,12 @@ public class Configs {
 	public static int MULTI_THREAD_NUMBER = 4;
 	public static int MULTI_THREAD_PRIORITY = Thread.NORM_PRIORITY;
 
+	public static boolean WATCHDOG_CLIENT 	= false;
+	public static boolean WATCHDOG_SERVER 	= false;
+	public static int WATCHDOG_TIMEOUT		= 60000;
+
 	public static int POWER_USAGE_MULTIPLIER = 1;
+	public static int LOGISTICS_CRAFTING_TABLE_POWER_USAGE = 250;
 
 	public static void load(FMLPreInitializationEvent event) {
 		File configFile = new File(event.getModConfigurationDirectory(), "LogisticsPipes.cfg");
@@ -122,14 +133,14 @@ public class Configs {
 		ITEM_PARTS_ID = CONFIGURATION.getItem("logisticsHUDParts.id",
 				ITEM_PARTS_ID, "The item id for the Logistics item parts")
 				.getInt();
-
-		// DEBUG (TEST) ONLY
-		if (LogisticsPipes.DEBUG) {
-			ITEM_LIQUID_CONTAINER_ID = CONFIGURATION.getItem(
-					"LogisticsLiquidContainer.id", ITEM_LIQUID_CONTAINER_ID,
-					"The item id for the logistics liquid container").getInt();
-		}
-
+		ITEM_BROKEN_ID = CONFIGURATION.getItem("LogisticsBrokenItem.id",
+				ITEM_BROKEN_ID, "The item id for the logistics broken item")
+				.getInt();
+	
+		ITEM_LIQUID_CONTAINER_ID = CONFIGURATION.getItem(
+				"LogisticsLiquidContainer.id", ITEM_LIQUID_CONTAINER_ID,
+				"The item id for the logistics liquid container").getInt();
+		
 		LOGISTICSPIPE_BASIC_ID = CONFIGURATION.getItem("logisticsPipe.id",
 				LOGISTICSPIPE_BASIC_ID,
 				"The item id for the basic logistics pipe").getInt();
@@ -207,29 +218,38 @@ public class Configs {
 				"logisticsPipeFirewall.id", LOGISTICSPIPE_FIREWALL_ID,
 				"The item id for the firewall logistics pipe").getInt();
 
-		// DEBUG (TEST) ONLY (LIQUID)
-		if (LogisticsPipes.DEBUG) {
-			LOGISTICSPIPE_LIQUID_CONNECTOR = CONFIGURATION.getItem(
-					"logisticPipeLiquidConnector.id",
-					LOGISTICSPIPE_LIQUID_CONNECTOR,
-					"The item id for the liquid connector pipe.").getInt();
-			LOGISTICSPIPE_LIQUID_BASIC = CONFIGURATION.getItem(
-					"logisticPipeLiquidBasic.id", LOGISTICSPIPE_LIQUID_BASIC,
-					"The item id for the liquid basic pipe.").getInt();
-			LOGISTICSPIPE_LIQUID_INSERTION = CONFIGURATION.getItem(
-					"logisticPipeLiquidInsertion.id",
-					LOGISTICSPIPE_LIQUID_INSERTION,
-					"The item id for the liquid insertion pipe.").getInt();
-			LOGISTICSPIPE_LIQUID_PROVIDER = CONFIGURATION.getItem(
-					"logisticPipeLiquidProvider.id",
-					LOGISTICSPIPE_LIQUID_PROVIDER,
-					"The item id for the liquid provider pipe.").getInt();
-			LOGISTICSPIPE_LIQUID_REQUEST = CONFIGURATION.getItem(
-					"logisticPipeLiquidRequest.id",
-					LOGISTICSPIPE_LIQUID_REQUEST,
-					"The item id for the liquid requestor pipe.").getInt();
-		}
-
+		LOGISTICSPIPE_LIQUID_CONNECTOR = CONFIGURATION.getItem(
+				"logisticPipeLiquidConnector.id",
+				LOGISTICSPIPE_LIQUID_CONNECTOR,
+				"The item id for the liquid connector pipe.").getInt();
+		LOGISTICSPIPE_LIQUID_BASIC = CONFIGURATION.getItem(
+				"logisticPipeLiquidBasic.id", LOGISTICSPIPE_LIQUID_BASIC,
+				"The item id for the liquid basic pipe.").getInt();
+		LOGISTICSPIPE_LIQUID_INSERTION = CONFIGURATION.getItem(
+				"logisticPipeLiquidInsertion.id",
+				LOGISTICSPIPE_LIQUID_INSERTION,
+				"The item id for the liquid insertion pipe.").getInt();
+		LOGISTICSPIPE_LIQUID_PROVIDER = CONFIGURATION.getItem(
+				"logisticPipeLiquidProvider.id",
+				LOGISTICSPIPE_LIQUID_PROVIDER,
+				"The item id for the liquid provider pipe.").getInt();
+		LOGISTICSPIPE_LIQUID_REQUEST = CONFIGURATION.getItem(
+				"logisticPipeLiquidRequest.id",
+				LOGISTICSPIPE_LIQUID_REQUEST,
+				"The item id for the liquid requestor pipe.").getInt();
+		LOGISTICSPIPE_LIQUID_EXTRACTOR = CONFIGURATION.getItem(
+				"logisticPipeLiquidExtractor.id",
+				LOGISTICSPIPE_LIQUID_EXTRACTOR,
+				"The item id for the liquid extractor pipe.").getInt();
+		LOGISTICSPIPE_LIQUID_SATELLITE = CONFIGURATION.getItem(
+				"logisticPipeLiquidSatellite.id",
+				LOGISTICSPIPE_LIQUID_SATELLITE,
+				"The item id for the liquid satellite pipe.").getInt();
+		LOGISTICSPIPE_LIQUID_SUPPLIER_MK2 = CONFIGURATION.getItem(
+				"logisticPipeLiquidSupplierMk2.id",
+				LOGISTICSPIPE_LIQUID_SUPPLIER_MK2,
+				"The item id for the liquid supplier pipe mk2.").getInt();
+		
 		LOGISTICS_DETECTION_LENGTH = CONFIGURATION
 				.get(Configuration.CATEGORY_GENERAL,
 						"detectionLength",
@@ -263,7 +283,7 @@ public class Configs {
 		LOGISTICS_POWER_USAGE_DISABLED = CONFIGURATION.get(
 				Configuration.CATEGORY_GENERAL, "powerUsageDisabled",
 				LOGISTICS_POWER_USAGE_DISABLED,
-				"Diable the power usage trough LogisticsPipes").getBoolean(
+				"Disable the power usage trough LogisticsPipes").getBoolean(
 				false);
 		LOGISTICS_TILE_GENERIC_PIPE_REPLACEMENT_DISABLED = CONFIGURATION
 				.get(Configuration.CATEGORY_GENERAL,
@@ -290,10 +310,6 @@ public class Configs {
 						"Set the default configuration for the popup of the Orderer Gui. Should it be used?")
 				.getBoolean(false);
 
-		LOGISTICSPIPE_BUILDERSUPPLIER_ID = CONFIGURATION.getItem(
-				"logisticsPipeBuilderSupplier.id",
-				LOGISTICSPIPE_BUILDERSUPPLIER_ID,
-				"The item id for the builder supplier pipe").getInt();
 		LOGISTICSPIPE_LIQUIDSUPPLIER_ID = CONFIGURATION.getItem(
 				"logisticsPipeLiquidSupplier.id",
 				LOGISTICSPIPE_LIQUIDSUPPLIER_ID,
@@ -334,6 +350,17 @@ public class Configs {
 					.toString(Thread.NORM_PRIORITY));
 		}
 
+		WATCHDOG_CLIENT = CONFIGURATION
+				.get(CATEGORY_DEBUG, "watchdog_client", WATCHDOG_CLIENT,
+						"Enable the LP thread watchdog client side.").getBoolean(false);
+		WATCHDOG_SERVER = CONFIGURATION
+				.get(CATEGORY_DEBUG, "watchdog_server", WATCHDOG_SERVER,
+						"Enable the LP thread watchdog server side.").getBoolean(false);
+		WATCHDOG_TIMEOUT = CONFIGURATION
+				.get(CATEGORY_DEBUG, "watchdog_timeout", WATCHDOG_TIMEOUT,
+						"The LP thread watchdog timeout time in ms.").getInt();
+
+		
 		POWER_USAGE_MULTIPLIER = CONFIGURATION.get(
 				Configuration.CATEGORY_GENERAL, "powerUsageMultiplyer",
 				POWER_USAGE_MULTIPLIER, "A Multiplyer for the power usage.")
@@ -345,6 +372,18 @@ public class Configs {
 					"powerUsageMultiplyer", POWER_USAGE_MULTIPLIER,
 					"A Multiplyer for the power usage.").set("1");
 		}
+
+		LOGISTICS_CRAFTING_TABLE_POWER_USAGE = Math
+				.max(CONFIGURATION
+						.get(Configuration.CATEGORY_GENERAL,
+								"logisticsCraftingTablePowerUsage",
+								LOGISTICS_CRAFTING_TABLE_POWER_USAGE,
+								"Number of LPower units the Logistics Crafting Table uses per craft.")
+						.getInt(), 0);
+
+		LOGISTICSPIPE_REQUEST_TABLE_ID = CONFIGURATION.getItem(
+				"logisticsPipeRequestTable.id", LOGISTICSPIPE_REQUEST_TABLE_ID,
+				"The item id for the request table").getInt();
 
 		CONFIGURATION.save();
 	}

@@ -9,23 +9,25 @@
 package logisticspipes.gui;
 
 import logisticspipes.interfaces.IGuiIDHandlerProvider;
-import logisticspipes.logic.LogicProvider;
 import logisticspipes.network.GuiIDs;
-import logisticspipes.network.NetworkConstants;
-import logisticspipes.network.packets.PacketCoordinates;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.module.ProviderPipeIncludePacket;
+import logisticspipes.network.packets.module.ProviderPipeNextModePacket;
+import logisticspipes.pipes.PipeItemsProviderLogistics;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.utils.gui.DummyContainer;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.inventory.GuiContainer;
 import net.minecraft.inventory.IInventory;
+import net.minecraft.util.ResourceLocation;
 
 import org.lwjgl.opengl.GL11;
 
 public class GuiProviderPipe extends GuiContainer implements IGuiIDHandlerProvider{
 	private IInventory dummyInventory;
-	private LogicProvider logic; 
+	private PipeItemsProviderLogistics logic;
 	
-	public GuiProviderPipe(IInventory playerInventory, IInventory dummyInventory, LogicProvider logic) {
+	public GuiProviderPipe(IInventory playerInventory, IInventory dummyInventory, PipeItemsProviderLogistics logic) {
 		super(null);
 		
 		DummyContainer dummy = new DummyContainer(playerInventory, dummyInventory);
@@ -62,10 +64,12 @@ public class GuiProviderPipe extends GuiContainer implements IGuiIDHandlerProvid
 		if (guibutton.id == 0){
 			logic.setFilterExcluded(!logic.isExcludeFilter());
 			((GuiButton)buttonList.get(0)).displayString = logic.isExcludeFilter() ? "Exclude" : "Include";
-			MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.PROVIDER_PIPE_CHANGE_INCLUDE, logic.xCoord, logic.yCoord, logic.zCoord).getPacket());
+//TODO 		MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.PROVIDER_PIPE_CHANGE_INCLUDE, logic.getX(), logic.getY(), logic.getZ()).getPacket());
+			MainProxy.sendPacketToServer(PacketHandler.getPacket(ProviderPipeIncludePacket.class).setPosX(logic.getX()).setPosY(logic.getY()).setPosZ(logic.getZ()));
 		} else if (guibutton.id  == 1){
 			logic.nextExtractionMode();
-			MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.PROVIDER_PIPE_NEXT_MODE, logic.xCoord, logic.yCoord, logic.zCoord).getPacket());
+//TODO 		MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.PROVIDER_PIPE_NEXT_MODE, logic.getX(), logic.getY(), logic.getZ()).getPacket());
+			MainProxy.sendPacketToServer(PacketHandler.getPacket(ProviderPipeNextModePacket.class).setPosX(logic.getX()).setPosY(logic.getY()).setPosZ(logic.getZ()));
 		}
 		super.actionPerformed(guibutton);
 	}
@@ -81,10 +85,12 @@ public class GuiProviderPipe extends GuiContainer implements IGuiIDHandlerProvid
 		fontRenderer.drawString("Mode: " + logic.getExtractionMode().getExtractionModeString(), 9, ySize - 112, 0x404040);
 	}
 	
+	private static final ResourceLocation TEXTURE = new ResourceLocation("logisticspipes", "textures/gui/supplier.png");
+	
 	@Override
 	protected void drawGuiContainerBackgroundLayer(float f, int x, int y) {
 		GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-		mc.renderEngine.bindTexture("/logisticspipes/gui/supplier.png");
+		mc.renderEngine.func_110577_a(TEXTURE);
 		int j = guiLeft;
 		int k = guiTop;
 		drawTexturedModalRect(j, k, 0, 0, xSize, ySize);

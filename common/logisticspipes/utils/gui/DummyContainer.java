@@ -11,10 +11,12 @@ package logisticspipes.utils.gui;
 import logisticspipes.LogisticsPipes;
 import logisticspipes.interfaces.IGuiOpenControler;
 import logisticspipes.interfaces.ISlotCheck;
+import logisticspipes.interfaces.ISlotClick;
 import logisticspipes.pipes.PipeLogisticsChassi;
 import logisticspipes.proxy.MainProxy;
+import logisticspipes.utils.Colors;
 import logisticspipes.utils.ItemIdentifier;
-import logisticspipes.utils.LiquidIdentifier;
+import logisticspipes.utils.FluidIdentifier;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.entity.player.InventoryPlayer;
@@ -22,6 +24,8 @@ import net.minecraft.inventory.Container;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
+import net.minecraftforge.fluids.FluidContainerRegistry;
+import net.minecraftforge.fluids.FluidStack;
 
 public class DummyContainer extends Container{
 	
@@ -87,17 +91,36 @@ public class DummyContainer extends Container{
 	public void addRestrictedSlot(int slotId, IInventory inventory, int xCoord, int yCoord, int ItemID) {
 		addSlotToContainer(new RestrictedSlot(inventory, slotId, xCoord, yCoord, ItemID));
 	}
+	public void addStaticRestrictedSlot(int slotId, IInventory inventory, int xCoord, int yCoord, int ItemID, int stackLimit) {
+		addSlotToContainer(new StaticRestrictedSlot(inventory, slotId, xCoord, yCoord, ItemID, stackLimit));
+	}
 
 	public void addRestrictedSlot(int slotId, IInventory inventory, int xCoord, int yCoord, ISlotCheck slotCheck) {
 		addSlotToContainer(new RestrictedSlot(inventory, slotId, xCoord, yCoord, slotCheck));
 	}
-	
+
+	public void addStaticRestrictedSlot(int slotId, IInventory inventory, int xCoord, int yCoord, ISlotCheck slotCheck, int stackLimit) {
+		addSlotToContainer(new StaticRestrictedSlot(inventory, slotId, xCoord, yCoord, slotCheck, stackLimit));
+	}
+
 	public void addModuleSlot(int slotId, IInventory inventory, int xCoord, int yCoord, PipeLogisticsChassi pipe) {
 		addSlotToContainer(new ModuleSlot(inventory, slotId, xCoord, yCoord, pipe));
 	}
 	
-	public void addLiquidSlot(int slotId, IInventory inventory, int xCoord, int yCoord) {
-		addSlotToContainer(new LiquidSlot(inventory, slotId, xCoord, yCoord));
+	public void addFluidSlot(int slotId, IInventory inventory, int xCoord, int yCoord) {
+		addSlotToContainer(new FluidSlot(inventory, slotId, xCoord, yCoord));
+	}
+	
+	public void addColorSlot(int slotId, IInventory inventory, int xCoord, int yCoord) {
+		addSlotToContainer(new ColorSlot(inventory, slotId, xCoord, yCoord));
+	}
+
+	public void addUnmodifiableSlot(int slotId, IInventory inventory, int xCoord, int yCoord) {
+		addSlotToContainer(new UnmodifiableSlot(inventory, slotId, xCoord, yCoord));
+	}
+	
+	public void addCallableSlotHandler(int slotId, IInventory inventory, int xCoord, int yCoord, ISlotClick handler) {
+		addSlotToContainer(new HandelableSlot(inventory, slotId, xCoord, yCoord, handler));
 	}
 	
 	/**
@@ -120,7 +143,7 @@ public class DummyContainer extends Container{
 	public ItemStack slotClick(int slotId, int mouseButton, int isShift, EntityPlayer entityplayer) {
 		if (slotId < 0) return super.slotClick(slotId, mouseButton, isShift, entityplayer);
 		Slot slot = (Slot)inventorySlots.get(slotId);
-		if (slot == null || (!(slot instanceof DummySlot) && !(slot instanceof UnmodifiableSlot) && !(slot instanceof LiquidSlot))) {
+		if (slot == null || (!(slot instanceof DummySlot) && !(slot instanceof UnmodifiableSlot) && !(slot instanceof FluidSlot) && !(slot instanceof ColorSlot) && !(slot instanceof HandelableSlot))) {
 			ItemStack stack1 = super.slotClick(slotId, mouseButton, isShift, entityplayer);
 			ItemStack stack2 = slot.getStack();
 			if(stack2 != null && stack2.getItem().itemID == LogisticsPipes.ModuleItem.itemID) {
@@ -135,26 +158,53 @@ public class DummyContainer extends Container{
 		
 		ItemStack currentlyEquippedStack = inventoryplayer.getItemStack();
 		
-		if(slot instanceof UnmodifiableSlot) {
+		if(slot instanceof HandelableSlot) {
+			if(currentlyEquippedStack == null) {
+				return ((HandelableSlot)slot).getProvidedStack();
+			}
 			return currentlyEquippedStack;
 		}
 		
-		if(slot instanceof LiquidSlot) {
-			LiquidIdentifier ident = null;
+		if(slot instanceof UnmodifiableSlot) {
+			return currentlyEquippedStack;
+		}
+		//we get a leftclick *and* a doubleclick message if there's a doubleclick with no item on the pointer, filter it out
+		if(currentlyEquippedStack == null && isShift == 6) {
+			return currentlyEquippedStack;
+		}
+		
+		if(slot instanceof FluidSlot) {
+			if(currentlyEquippedStack != null) {
+				FluidStack liquidId = FluidContainerRegistry.getFluidForFilledItem(currentlyEquippedStack);
+				if (liquidId != null) {
+					FluidIdentifier ident = FluidIdentifier.get(liquidId);
+					if(mouseButton == 0) {
+						if(ident == null) {
+							slot.putStack(null);
+						} else {
+							slot.putStack(ident.getItemIdentifier().unsafeMakeNormalStack(1));
+						}
+					} else {
+						slot.putStack(null);
+					}
+					return currentlyEquippedStack;
+				}
+			}
+			FluidIdentifier ident = null;
 			if(slot.getStack() != null) {
-				ident = ItemIdentifier.get(slot.getStack()).getLiquidIdentifier();
+				ident = ItemIdentifier.get(slot.getStack()).getFluidIdentifier();
 			}
 			if(mouseButton == 0) {
 				if(ident != null) {
 					ident = ident.next();
 				} else {
-					ident = LiquidIdentifier.first();
+					ident = FluidIdentifier.first();
 				}
 			} else if(mouseButton == 1) {
 				if(ident != null) {
 					ident = ident.prev();
 				} else {
-					ident = LiquidIdentifier.last();
+					ident = FluidIdentifier.last();
 				}
 			} else {
 				ident = null;
@@ -163,6 +213,31 @@ public class DummyContainer extends Container{
 				slot.putStack(null);
 			} else {
 				slot.putStack(ident.getItemIdentifier().unsafeMakeNormalStack(1));
+			}
+			if(entityplayer instanceof EntityPlayerMP && MainProxy.isServer(entityplayer.worldObj)) {
+				((EntityPlayerMP)entityplayer).sendSlotContents(this, slotId, slot.getStack());
+			}
+			return currentlyEquippedStack;
+		}
+		
+		if(slot instanceof ColorSlot) {
+			Colors equipped = Colors.getColor(currentlyEquippedStack);
+			Colors color = Colors.getColor(slot.getStack());
+			if(Colors.BLANK.equals(equipped)) {
+				if(mouseButton == 0) {
+					color = color.getNext();
+				} else if(mouseButton == 1) {
+					color = color.getPrev();
+				} else {
+					color = Colors.BLANK;
+				}
+				slot.putStack(color.getItemStack());
+			} else {
+				if(mouseButton == 1) {
+					slot.putStack(Colors.BLANK.getItemStack());
+				} else {
+					slot.putStack(equipped.getItemStack());
+				}
 			}
 			if(entityplayer instanceof EntityPlayerMP && MainProxy.isServer(entityplayer.worldObj)) {
 				((EntityPlayerMP)entityplayer).sendSlotContents(this, slotId, slot.getStack());
@@ -232,11 +307,11 @@ public class DummyContainer extends Container{
 	}
 	
 	@Override
-	public void onCraftGuiClosed(EntityPlayer par1EntityPlayer) {
+	public void onContainerClosed(EntityPlayer par1EntityPlayer) {
 		if(_controler != null) {
 			_controler.guiClosedByPlayer(par1EntityPlayer);
 		}
-		super.onCraftGuiClosed(par1EntityPlayer);
+		super.onContainerClosed(par1EntityPlayer);
 	}
 
 	@Override

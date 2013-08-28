@@ -10,14 +10,16 @@ package logisticspipes.gui.modules;
 
 import logisticspipes.modules.ModuleElectricManager;
 import logisticspipes.network.GuiIDs;
-import logisticspipes.network.NetworkConstants;
-import logisticspipes.network.packets.PacketModuleInteger;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.module.ElectricManagerPacket;
+import logisticspipes.pipes.basic.CoreRoutedPipe;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.utils.gui.DummyContainer;
 import logisticspipes.utils.gui.GuiStringHandlerButton;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.inventory.IInventory;
+import net.minecraft.util.ResourceLocation;
 
 import org.lwjgl.opengl.GL11;
 
@@ -49,16 +51,18 @@ public class GuiElectricManager extends GuiWithPreviousGuiContainer {
 		{
 			case 0:
 				_module.setDischargeMode(!_module.isDischargeMode());
-				if(slot != 20) {
-					MainProxy.sendPacketToServer(new PacketModuleInteger(NetworkConstants.ELECTRIC_MANAGER_SET, pipe.xCoord, pipe.yCoord, pipe.zCoord, slot - 1, (_module.isDischargeMode() ? 1 : 0)).getPacket());
+				if(slot >= 0) {
+//TODO 				MainProxy.sendPacketToServer(new PacketModuleInteger(NetworkConstants.ELECTRIC_MANAGER_SET, pipe.getX(), pipe.getY(), pipe.getZ(), slot - 1, (_module.isDischargeMode() ? 1 : 0)).getPacket());
+					MainProxy.sendPacketToServer(PacketHandler.getPacket(ElectricManagerPacket.class).setInteger2(slot - 1).setInteger((_module.isDischargeMode() ? 1 : 0)).setPosX(pipe.getX()).setPosY(pipe.getY()).setPosZ(pipe.getZ()));
 				} else {
-					MainProxy.sendPacketToServer(new PacketModuleInteger(NetworkConstants.ELECTRIC_MANAGER_SET, _module.xCoord, _module.yCoord, _module.zCoord, slot, (_module.isDischargeMode() ? 1 : 0)).getPacket());
+//TODO 				MainProxy.sendPacketToServer(new PacketModuleInteger(NetworkConstants.ELECTRIC_MANAGER_SET, _module.getX(), _module.getY(), _module.getZ(), slot, (_module.isDischargeMode() ? 1 : 0)).getPacket());
+					MainProxy.sendPacketToServer(PacketHandler.getPacket(ElectricManagerPacket.class).setInteger2(slot).setInteger((_module.isDischargeMode() ? 1 : 0)).setPosX(_module.getX()).setPosY(_module.getY()).setPosZ(_module.getZ()));
 				}
 				break;
 		}
 	}
 
-	public GuiElectricManager(IInventory playerInventory, Pipe pipe, ModuleElectricManager module, GuiScreen previousGui, int slot) {
+	public GuiElectricManager(IInventory playerInventory, CoreRoutedPipe pipe, ModuleElectricManager module, GuiScreen previousGui, int slot) {
 		super(null,pipe,previousGui);
 		_module = module;
 		this.slot = slot;
@@ -79,11 +83,11 @@ public class GuiElectricManager extends GuiWithPreviousGuiContainer {
 		fontRenderer.drawString(_module.getFilterInventory().getInvName(), 8, 6, 0x404040);
 		fontRenderer.drawString("Inventory", 8, ySize - 92, 0x404040);
 	}
-
+	private static final ResourceLocation TEXTURE = new ResourceLocation("logisticspipes", "textures/gui/itemsink.png");
 	@Override
 	protected void drawGuiContainerBackgroundLayer(float f, int x, int y) {
 		GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
-		mc.renderEngine.bindTexture("/logisticspipes/gui/itemsink.png");
+		mc.renderEngine.func_110577_a(TEXTURE);
 		int j = guiLeft;
 		int k = guiTop;
 		drawTexturedModalRect(j, k, 0, 0, xSize, ySize);

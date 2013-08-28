@@ -2,19 +2,21 @@ package logisticspipes.proxy.side;
 
 import java.io.File;
 
-import buildcraft.transport.TileGenericPipe;
-
 import logisticspipes.LogisticsPipes;
 import logisticspipes.blocks.LogisticsSecurityTileEntity;
 import logisticspipes.blocks.LogisticsSignTileEntity;
 import logisticspipes.blocks.LogisticsSolderingTileEntity;
+import logisticspipes.blocks.crafting.LogisticsCraftingTableTileEntity;
+import logisticspipes.blocks.powertile.LogisticsPowerJunctionTileEntity;
 import logisticspipes.config.Configs;
-import logisticspipes.network.packets.PacketNameUpdatePacket;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.UpdateName;
+import logisticspipes.pipes.basic.LogisticsTileGenericPipe;
 import logisticspipes.proxy.SimpleServiceLocator;
-import logisticspipes.proxy.buildcraft.BuildCraftProxy;
 import logisticspipes.proxy.interfaces.IProxy;
 import logisticspipes.utils.ItemIdentifier;
 import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.client.renderer.texture.IconRegister;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
 import net.minecraft.network.packet.Packet250CustomPayload;
@@ -23,6 +25,7 @@ import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.Configuration;
 import net.minecraftforge.common.DimensionManager;
+import buildcraft.transport.TileGenericPipe;
 import cpw.mods.fml.common.network.Player;
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.server.FMLServerHandler;
@@ -47,14 +50,15 @@ public class ServerProxy implements IProxy {
 	}
 
 	@Override
-	public void registerTileEntitis() {
+	public void registerTileEntities() {
 		GameRegistry.registerTileEntity(LogisticsSignTileEntity.class, "net.minecraft.src.buildcraft.logisticspipes.blocks.LogisticsTileEntiy");
 		GameRegistry.registerTileEntity(LogisticsSignTileEntity.class, "logisticspipes.blocks.LogisticsSignTileEntity");
 		GameRegistry.registerTileEntity(LogisticsSolderingTileEntity.class, "logisticspipes.blocks.LogisticsSolderingTileEntity");
-		GameRegistry.registerTileEntity(LogisticsPipes.powerTileEntity, "logisticspipes.blocks.powertile.LogisticsPowerJuntionTileEntity");
+		GameRegistry.registerTileEntity(LogisticsPowerJunctionTileEntity.class, "logisticspipes.blocks.powertile.LogisticsPowerJuntionTileEntity");
 		GameRegistry.registerTileEntity(LogisticsSecurityTileEntity.class, "logisticspipes.blocks.LogisticsSecurityTileEntity");
+		GameRegistry.registerTileEntity(LogisticsCraftingTableTileEntity.class, "logisticspipes.blocks.crafting.LogisticsCraftingTableTileEntity");
 		if(!Configs.LOGISTICS_TILE_GENERIC_PIPE_REPLACEMENT_DISABLED) {
-			GameRegistry.registerTileEntity(BuildCraftProxy.logisticsTileGenericPipe, LogisticsPipes.logisticsTileGenericPipeMapping);
+			GameRegistry.registerTileEntity(LogisticsTileGenericPipe.class, LogisticsPipes.logisticsTileGenericPipeMapping);
 		}
 	}
 
@@ -192,7 +196,8 @@ public class ServerProxy implements IProxy {
 				}
 				int id = Integer.valueOf(itemPart);
 				int meta = Integer.valueOf(metaPart);
-				SimpleServiceLocator.serverBufferHandler.addPacketToCompressor((Packet250CustomPayload) new PacketNameUpdatePacket(ItemIdentifier.get(id, meta, null), "-").getPacket(), player);
+				//SimpleServiceLocator.serverBufferHandler.addPacketToCompressor((Packet250CustomPayload) new PacketNameUpdatePacket(ItemIdentifier.get(id, meta, null), "-").getPacket(), player);
+				SimpleServiceLocator.serverBufferHandler.addPacketToCompressor(PacketHandler.getPacket(UpdateName.class).setIdent(ItemIdentifier.get(id, meta, null)).setName("-").getPacket(), player);
 			}
 		}
 	}
@@ -205,7 +210,7 @@ public class ServerProxy implements IProxy {
 		if(world instanceof WorldClient) {
 			return ((WorldClient)world).provider.dimensionId;
 		}
-		return world.getWorldInfo().getDimension();
+		return world.getWorldInfo().getVanillaDimension();
 	}
 
 	@Override
@@ -240,7 +245,7 @@ public class ServerProxy implements IProxy {
 	}
 	// BuildCraft method end
 	@Override
-	public void addLogisticsPipesOverride(int index, String override1,
+	public void addLogisticsPipesOverride(IconRegister par1IconRegister, int index, String override1,
 			String override2, boolean flag) {
 		// TODO Auto-generated method stub
 		

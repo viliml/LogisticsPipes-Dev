@@ -3,20 +3,20 @@ package logisticspipes.pipes;
 import java.util.LinkedList;
 import java.util.List;
 
-import logisticspipes.interfaces.ILogisticsModule;
+import logisticspipes.interfaces.IInventoryUtil;
 import logisticspipes.interfaces.ISendRoutedItem;
 import logisticspipes.interfaces.routing.IFilter;
 import logisticspipes.interfaces.routing.IRelayItem;
-import logisticspipes.logic.TemporaryLogic;
+import logisticspipes.logisticspipes.ExtractionMode;
 import logisticspipes.logisticspipes.IInventoryProvider;
 import logisticspipes.logisticspipes.IRoutedItem;
 import logisticspipes.logisticspipes.IRoutedItem.TransportMode;
-import logisticspipes.logisticspipes.SidedInventoryAdapter;
 import logisticspipes.logisticspipes.TransportLayer;
+import logisticspipes.modules.LogisticsModule;
 import logisticspipes.modules.ModuleApiaristAnalyser;
 import logisticspipes.pipes.basic.CoreRoutedPipe;
-import logisticspipes.pipes.upgrades.UpgradeManager;
 import logisticspipes.proxy.SimpleServiceLocator;
+import logisticspipes.routing.RoutedEntityItem;
 import logisticspipes.textures.Textures;
 import logisticspipes.textures.Textures.TextureType;
 import logisticspipes.utils.AdjacentTile;
@@ -29,7 +29,6 @@ import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraftforge.common.ForgeDirection;
-import net.minecraftforge.common.ISidedInventory;
 import buildcraft.api.core.Position;
 import buildcraft.transport.TileGenericPipe;
 
@@ -38,7 +37,7 @@ public class PipeItemsApiaristAnalyser extends CoreRoutedPipe implements IInvent
 	private ModuleApiaristAnalyser analyserModule;
 
 	public PipeItemsApiaristAnalyser(int itemID) {
-		super(new TemporaryLogic(), itemID);
+		super(itemID);
 		analyserModule = new ModuleApiaristAnalyser();
 		analyserModule.registerHandler(this, this, this, this);
 	}
@@ -52,8 +51,17 @@ public class PipeItemsApiaristAnalyser extends CoreRoutedPipe implements IInvent
 	public TransportLayer getTransportLayer() {
 		if (this._transportLayer == null){
 			_transportLayer = new TransportLayer() {
-				@Override public ForgeDirection itemArrived(IRoutedItem item, ForgeDirection blocked) {return getPointedOrientation();}
-				@Override public boolean stillWantItem(IRoutedItem item) {return true;}
+				@Override public ForgeDirection itemArrived(IRoutedItem item, ForgeDirection blocked) {
+					item.setArrived(true);
+					getRouter().inboundItemArrived((RoutedEntityItem) item); //NOT TESTED
+					ForgeDirection pointed = getPointedOrientation();
+					if(blocked != null && blocked.equals(pointed))
+						return null;
+					return pointed;
+				}
+				@Override public boolean stillWantItem(IRoutedItem item) {
+					return true;
+				}
 			};
 		}
 		return _transportLayer;
@@ -68,7 +76,7 @@ public class PipeItemsApiaristAnalyser extends CoreRoutedPipe implements IInvent
 	}
 
 	@Override
-	public ILogisticsModule getLogisticsModule() {
+	public LogisticsModule getLogisticsModule() {
 		return analyserModule;
 	}
 
@@ -79,7 +87,7 @@ public class PipeItemsApiaristAnalyser extends CoreRoutedPipe implements IInvent
 
 	@Override
 	public void sendStack(ItemStack stack, Pair3<Integer, SinkReply, List<IFilter>> reply, ItemSendMode mode) {
-		IRoutedItem itemToSend = SimpleServiceLocator.buildCraftProxy.CreateRoutedItem(stack, this.worldObj);
+		IRoutedItem itemToSend = SimpleServiceLocator.buildCraftProxy.CreateRoutedItem(this.container, stack);
 		itemToSend.setDestination(reply.getValue1());
 		if (reply.getValue2().isPassive){
 			if (reply.getValue2().isDefault){
@@ -100,7 +108,7 @@ public class PipeItemsApiaristAnalyser extends CoreRoutedPipe implements IInvent
 
 	@Override
 	public void sendStack(ItemStack stack, int destination, ItemSendMode mode, List<IRelayItem> relays) {
-		IRoutedItem itemToSend = SimpleServiceLocator.buildCraftProxy.CreateRoutedItem(stack, this.worldObj);
+		IRoutedItem itemToSend = SimpleServiceLocator.buildCraftProxy.CreateRoutedItem(this.container, stack);
 		itemToSend.setDestination(destination);
 		itemToSend.setTransportMode(TransportMode.Active);
 		itemToSend.addRelayPoints(relays);
@@ -112,7 +120,7 @@ public class PipeItemsApiaristAnalyser extends CoreRoutedPipe implements IInvent
 			Position pos = new Position(this.container);
 			pos.orientation = ori;
 			pos.moveForwards(1);
-			TileEntity tile = this.worldObj.getBlockTileEntity((int)pos.x, (int)pos.y, (int)pos.z);
+			TileEntity tile = this.getWorld().getBlockTileEntity((int)pos.x, (int)pos.y, (int)pos.z);
 			if(tile != null) {
 				if(SimpleServiceLocator.forestryProxy.isTileAnalyser(tile)) {
 					return ori;
@@ -123,7 +131,7 @@ public class PipeItemsApiaristAnalyser extends CoreRoutedPipe implements IInvent
 	}
 
 	private TileEntity getPointedTileEntity() {
-		WorldUtil wUtil = new WorldUtil(worldObj, xCoord, yCoord, zCoord);
+		WorldUtil wUtil = new WorldUtil(getWorld(), getX(), getY(), getZ());
 		for (AdjacentTile tile : wUtil.getAdjacentTileEntities(true)){
 			if(tile.tile != null) {
 				if(SimpleServiceLocator.forestryProxy.isTileAnalyser(tile.tile)) {
@@ -135,37 +143,41 @@ public class PipeItemsApiaristAnalyser extends CoreRoutedPipe implements IInvent
 	}
 
 	@Override
-	public IInventory getRawInventory() {
+	public IInventoryUtil getPointedInventory(boolean forExtract) {
+		return null; //Unused
+	}
+
+	@Override
+	public IInventoryUtil getPointedInventory(ExtractionMode mode, boolean forExtract) {
+		return null; //Unused
+	}
+
+	@Override
+	public IInventoryUtil getSneakyInventory(boolean forExtract) {
+		return null; //Unused
+	}
+
+	@Override
+	public IInventoryUtil getSneakyInventory(ForgeDirection _sneakyOrientation, boolean forExtract) {
+		return null;
+	}
+
+	@Override
+	public IInventoryUtil getUnsidedInventory() {
+		IInventory inv = getRealInventory();
+		if(inv == null) return null;
+		return SimpleServiceLocator.inventoryUtilFactory.getInventoryUtil(inv);
+	}
+
+	@Override
+	public IInventory getRealInventory() {
 		TileEntity tile = getPointedTileEntity();
+		if (tile == null ) return null;
 		if (tile instanceof TileGenericPipe) return null;
 		if (!(tile instanceof IInventory)) return null;
 		return InventoryHelper.getInventory((IInventory) tile);
 	}
-
-	@Override
-	public IInventory getPointedInventory() {
-		IInventory rawInventory = getRawInventory();
-		if (rawInventory instanceof ISidedInventory) return new SidedInventoryAdapter((ISidedInventory) rawInventory, this.getPointedOrientation().getOpposite());
-		return rawInventory;
-	}
-
-	@Override
-	public IInventory getSneakyInventory() {
-		UpgradeManager manager = getUpgradeManager();
-		ForgeDirection insertion = this.getPointedOrientation().getOpposite();
-		if(manager.hasSneakyUpgrade()) {
-			insertion = manager.getSneakyOrientation();
-		}
-		return getSneakyInventory(insertion);
-	}
-
-	@Override
-	public IInventory getSneakyInventory(ForgeDirection sneakyOrientation) {
-		IInventory rawInventory = getRawInventory();
-		if (rawInventory instanceof ISidedInventory) return new SidedInventoryAdapter((ISidedInventory) rawInventory, sneakyOrientation);
-		return rawInventory;
-	}
-
+	
 	@Override
 	public ForgeDirection inventoryOrientation() {
 		return getPointedOrientation();
@@ -184,7 +196,7 @@ public class PipeItemsApiaristAnalyser extends CoreRoutedPipe implements IInvent
 	@Override
 	public void setTile(TileEntity tile) {
 		super.setTile(tile);
-		analyserModule.registerPosition(xCoord, yCoord, zCoord, 0);
+		analyserModule.registerSlot(0);
 	}
 
 	@Override

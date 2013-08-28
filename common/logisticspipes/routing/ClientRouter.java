@@ -8,7 +8,7 @@ import java.util.UUID;
 
 import logisticspipes.LogisticsPipes;
 import logisticspipes.api.ILogisticsPowerProvider;
-import logisticspipes.interfaces.ILogisticsModule;
+import logisticspipes.modules.LogisticsModule;
 import logisticspipes.pipes.basic.CoreRoutedPipe;
 import logisticspipes.proxy.MainProxy;
 import net.minecraft.tileentity.TileEntity;
@@ -113,19 +113,7 @@ public class ClientRouter implements IRouter {
 
 	@Override
 	public UUID getId() {
-		return null;
-	}
-
-	@Override
-	public void displayRoutes() {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void displayRouteTo(int r) {
-		// TODO Auto-generated method stub
-		
+		return  UUID.randomUUID();
 	}
 
 	@Override
@@ -134,7 +122,7 @@ public class ClientRouter implements IRouter {
 	}
 
 	@Override
-	public ILogisticsModule getLogisticsModule() {
+	public LogisticsModule getLogisticsModule() {
 		CoreRoutedPipe pipe = this.getPipe();
 		if (pipe == null) return null;
 		return pipe.getLogisticsModule();
@@ -157,25 +145,21 @@ public class ClientRouter implements IRouter {
 
 	@Override
 	public boolean act(BitSet hasBeenProcessed, IRAction actor) {
-		// TODO Auto-generated method stub
 		return false;
 	}
 
 	@Override
 	public void flagForRoutingUpdate() {
-		// TODO Auto-generated method stub
 		
 	}
 
 	@Override
 	public boolean checkAdjacentUpdate() {
-		// TODO Auto-generated method stub
 		return false;
 	}
 
 	@Override
 	public void clearPrevAdjacent() {
-		// TODO Auto-generated method stub
 		
 	}
 
@@ -186,19 +170,26 @@ public class ClientRouter implements IRouter {
 
 	@Override
 	public void updateInterests() {
-		// TODO Auto-generated method stub
 		
 	}
 
 	@Override
 	public ExitRoute getDistanceTo(IRouter r) {
-		// TODO Auto-generated method stub
 		return null;
 	}
 
 	@Override
 	public void clearInterests() {
-		// TODO Auto-generated method stub
 		
+	}
+
+	@Override
+	public List<IRouter> getFilteringRouter() {
+		return null;
+	}
+
+	@Override
+	public boolean isValidCache() {
+		return true;
 	}
 }

@@ -4,7 +4,7 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.LinkedList;
 
-import logisticspipes.LogisticsPipes;
+import logisticspipes.pipes.basic.LogisticsTileGenericPipe;
 import logisticspipes.proxy.interfaces.ICCProxy;
 import logisticspipes.utils.AdjacentTile;
 import logisticspipes.utils.WorldUtil;
@@ -40,9 +40,7 @@ public class CCProxy implements ICCProxy {
 			target.setAccessible(true);
 			valid = true;
 		} catch(Exception e) {
-			if(LogisticsPipes.DEBUG) {
-				e.printStackTrace();
-			}
+			e.printStackTrace();
 			valid = false;
 		}
 	}
@@ -76,7 +74,7 @@ public class CCProxy implements ICCProxy {
 		if(!valid) return ForgeDirection.UNKNOWN;
 		if(!(cObject instanceof IComputerAccess)) return ForgeDirection.UNKNOWN;
 		IComputerAccess computer = (IComputerAccess) cObject;
-		WorldUtil world = new WorldUtil(pipe.worldObj, pipe.xCoord, pipe.yCoord, pipe.zCoord);
+		WorldUtil world = new WorldUtil(pipe.getWorldObj(), pipe.xCoord, pipe.yCoord, pipe.zCoord);
 		LinkedList<AdjacentTile> adjacent = world.getAdjacentTileEntities(false);
 		for(AdjacentTile aTile: adjacent) {
 			try {
@@ -96,17 +94,11 @@ public class CCProxy implements ICCProxy {
 					}
 				}
 			} catch (IllegalArgumentException e) {
-				if(LogisticsPipes.DEBUG) {
-						e.printStackTrace();
-				}
+				e.printStackTrace();
 			} catch (IllegalAccessException e) {
-				if(LogisticsPipes.DEBUG) {
-					e.printStackTrace();
-				}
+				e.printStackTrace();
 			} catch(ClassCastException e) {
-				if(LogisticsPipes.DEBUG) {
-					e.printStackTrace();
-				}
+				e.printStackTrace();
 			}
 		}
 		return ForgeDirection.UNKNOWN;
@@ -116,17 +108,11 @@ public class CCProxy implements ICCProxy {
 		try {
 			return (Runnable) target.get(thread);
 		} catch (SecurityException e) {
-			if(LogisticsPipes.DEBUG) {
-				e.printStackTrace();
-			}
+			e.printStackTrace();
 		} catch (IllegalArgumentException e) {
-			if(LogisticsPipes.DEBUG) {
-				e.printStackTrace();
-			}
+			e.printStackTrace();
 		} catch (IllegalAccessException e) {
-			if(LogisticsPipes.DEBUG) {
-				e.printStackTrace();
-			}
+			e.printStackTrace();
 		}
 		return null;
 	}
@@ -138,5 +124,29 @@ public class CCProxy implements ICCProxy {
 			return false;
 		}
 		return tar.getClass().getName().contains("org.luaj.vm2.LuaThread");
+	}
+
+	@Override
+	public void queueEvent(String event, Object[] arguments, LogisticsTileGenericPipe tile) {
+		for(IComputerAccess computer: tile.connections.keySet()) {
+			computer.queueEvent(event, arguments);
+		}
+	}
+
+	@Override
+	public void setTurtleConnect(boolean flag, LogisticsTileGenericPipe tile) {
+		tile.turtleConnect[tile.connections.get(tile.lastPC).ordinal()] = flag;
+		tile.scheduleNeighborChange();
+	}
+
+	@Override
+	public boolean getTurtleConnect(LogisticsTileGenericPipe tile) {
+		return tile.turtleConnect[tile.connections.get(tile.lastPC).ordinal()];
+	}
+
+	@Override
+	public int getLastCCID(LogisticsTileGenericPipe tile) {
+		if(tile.lastPC == null) return -1;
+		return tile.lastPC.getID();
 	}
 }

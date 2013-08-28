@@ -1,9 +1,7 @@
 package logisticspipes.pipes;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedList;
-import java.util.List;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
@@ -14,17 +12,16 @@ import logisticspipes.LogisticsPipes;
 import logisticspipes.gui.hud.HUDInvSysConnector;
 import logisticspipes.interfaces.IHeadUpDisplayRenderer;
 import logisticspipes.interfaces.IHeadUpDisplayRendererProvider;
-import logisticspipes.interfaces.ILogisticsModule;
 import logisticspipes.interfaces.IOrderManagerContentReceiver;
 import logisticspipes.interfaces.routing.IDirectRoutingConnection;
-import logisticspipes.logic.LogicInvSysConnection;
 import logisticspipes.logisticspipes.IRoutedItem;
 import logisticspipes.logisticspipes.IRoutedItem.TransportMode;
-import logisticspipes.logisticspipes.SidedInventoryAdapter;
+import logisticspipes.modules.LogisticsModule;
 import logisticspipes.network.GuiIDs;
-import logisticspipes.network.NetworkConstants;
-import logisticspipes.network.packets.PacketPipeInteger;
-import logisticspipes.network.packets.PacketPipeInvContent;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.hud.HUDStartWatchingPacket;
+import logisticspipes.network.packets.hud.HUDStopWatchingPacket;
+import logisticspipes.network.packets.orderer.OrdererManagerContent;
 import logisticspipes.pipefxhandlers.Particles;
 import logisticspipes.pipes.basic.CoreRoutedPipe;
 import logisticspipes.proxy.MainProxy;
@@ -38,6 +35,9 @@ import logisticspipes.utils.InventoryHelper;
 import logisticspipes.utils.ItemIdentifier;
 import logisticspipes.utils.ItemIdentifierStack;
 import logisticspipes.utils.Pair4;
+import logisticspipes.utils.PlayerCollectionList;
+
+import logisticspipes.utils.SidedInventoryMinecraftAdapter;
 import logisticspipes.utils.SimpleInventory;
 import logisticspipes.utils.WorldUtil;
 import net.minecraft.entity.item.EntityItem;
@@ -46,11 +46,10 @@ import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
-import net.minecraft.world.World;
+import net.minecraft.util.ChatMessageComponent;
 import net.minecraftforge.common.ForgeDirection;
-import net.minecraftforge.common.ISidedInventory;
 import buildcraft.api.core.Position;
-import buildcraft.transport.EntityData;
+import buildcraft.transport.TravelingItem;
 import cpw.mods.fml.common.network.Player;
 
 public class PipeItemsInvSysConnector extends CoreRoutedPipe implements IDirectRoutingConnection, IHeadUpDisplayRendererProvider, IOrderManagerContentReceiver{
@@ -62,12 +61,12 @@ public class PipeItemsInvSysConnector extends CoreRoutedPipe implements IDirectR
 	public int resistance;
 	public Set<ItemIdentifierStack> oldList = new TreeSet<ItemIdentifierStack>();
 	public final LinkedList<ItemIdentifierStack> displayList = new LinkedList<ItemIdentifierStack>();
-	public final List<EntityPlayer> localModeWatchers = new ArrayList<EntityPlayer>();
+	public final PlayerCollectionList localModeWatchers = new PlayerCollectionList();
 	private HUDInvSysConnector HUD = new HUDInvSysConnector(this);
 	private UUID idbuffer = UUID.randomUUID();
 	
 	public PipeItemsInvSysConnector(int itemID) {
-		super(new TransportInvConnection(), new LogicInvSysConnection(), itemID);
+		super(new TransportInvConnection(), itemID);
 	}
 	
 	@Override
@@ -109,12 +108,12 @@ public class PipeItemsInvSysConnector extends CoreRoutedPipe implements IDirectR
 	}
 
 	private void checkConnectedInvs() {
-		WorldUtil wUtil = new WorldUtil(worldObj, xCoord, yCoord, zCoord);
+		WorldUtil wUtil = new WorldUtil(getWorld(), getX(), getY(), getZ());
 		for (AdjacentTile tile : wUtil.getAdjacentTileEntities(true)){
 			if(tile.tile instanceof IInventory) {
 				IInventory inv = InventoryHelper.getInventory((IInventory) tile.tile);
-				if(inv instanceof ISidedInventory) {
-					inv = new SidedInventoryAdapter((ISidedInventory)inv, tile.orientation.getOpposite());
+				if(inv instanceof net.minecraft.inventory.ISidedInventory) {
+					inv = new SidedInventoryMinecraftAdapter((net.minecraft.inventory.ISidedInventory)inv, tile.orientation.getOpposite(),false);
 				}
 				if(checkOneConnectedInv(inv,tile.orientation)) {
 					updateContentListener();
@@ -150,11 +149,11 @@ public class PipeItemsInvSysConnector extends CoreRoutedPipe implements IDirectR
 	}
 
 	public void sendStack(ItemStack stack, int destination, ForgeDirection dir, TransportMode mode) {
-		IRoutedItem itemToSend = SimpleServiceLocator.buildCraftProxy.CreateRoutedItem(stack, this.worldObj);
+		IRoutedItem itemToSend = SimpleServiceLocator.buildCraftProxy.CreateRoutedItem(this.container, stack);
 		itemToSend.setDestination(destination);
 		itemToSend.setTransportMode(mode);
 		super.queueRoutedItem(itemToSend, dir);
-		MainProxy.sendSpawnParticlePacket(Particles.OrangeParticle, xCoord, yCoord, zCoord, this.worldObj, 4);
+		MainProxy.sendSpawnParticlePacket(Particles.OrangeParticle, getX(), getY(), getZ(), this.getWorld(), 4);
 	}
 	
 	private UUID getConnectionUUID() {
@@ -185,9 +184,9 @@ public class PipeItemsInvSysConnector extends CoreRoutedPipe implements IDirectR
 
 	private void dropFreqCard() {
 		if(inv.getStackInSlot(0) == null) return;
-		EntityItem item = new EntityItem(worldObj,this.xCoord, this.yCoord, this.zCoord, inv.getStackInSlot(0));
-		worldObj.spawnEntityInWorld(item);
-		inv.setInventorySlotContents(0, null);
+		EntityItem item = new EntityItem(getWorld(),this.getX(), this.getY(), this.getZ(), inv.getStackInSlot(0));
+		getWorld().spawnEntityInWorld(item);
+		inv.clearInventorySlotContents(0);
 	}
 
 	public Set<ItemIdentifierStack> getExpectedItems() {
@@ -205,19 +204,19 @@ public class PipeItemsInvSysConnector extends CoreRoutedPipe implements IDirectR
 	}
 	
 	@Override
-	public boolean wrenchClicked(World world, int i, int j, int k, EntityPlayer entityplayer, SecuritySettings settings) {
-		if(MainProxy.isServer(world)) {
+	public boolean wrenchClicked(EntityPlayer entityplayer, SecuritySettings settings) {
+		if(MainProxy.isServer(getWorld())) {
 			if (settings == null || settings.openGui) {
-				entityplayer.openGui(LogisticsPipes.instance, GuiIDs.GUI_Inv_Sys_Connector_ID, world, i, j, k);
+				entityplayer.openGui(LogisticsPipes.instance, GuiIDs.GUI_Inv_Sys_Connector_ID, getWorld(), getX(), getY(), getZ());
 			} else {
-				entityplayer.sendChatToPlayer("Permission denied");
+				entityplayer.sendChatToPlayer(ChatMessageComponent.func_111066_d("Permission denied"));
 			}
 		}
 		return true;
 	}
 
 	@Override
-	public void onBlockRemoval() {
+	public void onAllowedRemoval() {
 		if(!stillNeedReplace) {
 			CoreRoutedPipe CRP = SimpleServiceLocator.connectionManager.getConnectedPipe(getRouter());
 			SimpleServiceLocator.connectionManager.removeDirectConnection(getRouter());
@@ -226,7 +225,6 @@ public class PipeItemsInvSysConnector extends CoreRoutedPipe implements IDirectR
 			}
 		}
 		dropFreqCard();
-		super.onBlockRemoval();
 	}
 	
 
@@ -272,14 +270,14 @@ public class PipeItemsInvSysConnector extends CoreRoutedPipe implements IDirectR
 	}
 	
 	private boolean hasRemoteConnection() {
-		return hasConnectionUUID() && this.worldObj != null && SimpleServiceLocator.connectionManager.hasDirectConnection(getRouter());
+		return hasConnectionUUID() && this.getWorld() != null && SimpleServiceLocator.connectionManager.hasDirectConnection(getRouter());
 	}
 	
 	private boolean inventoryConnected() {
 		for (int i = 0; i < 6; i++)	{
-			Position p = new Position(xCoord, yCoord, zCoord, ForgeDirection.values()[i]);
+			Position p = new Position(getX(), getY(), getZ(), ForgeDirection.values()[i]);
 			p.moveForwards(1);
-			TileEntity tile = worldObj.getBlockTileEntity((int) p.x, (int) p.y, (int) p.z);
+			TileEntity tile = getWorld().getBlockTileEntity((int) p.x, (int) p.y, (int) p.z);
 			if(tile instanceof IInventory) {
 				return true;
 			}
@@ -300,7 +298,7 @@ public class PipeItemsInvSysConnector extends CoreRoutedPipe implements IDirectR
 	}
 
 	@Override
-	public ILogisticsModule getLogisticsModule() {
+	public LogisticsModule getLogisticsModule() {
 		return null;
 	}
 
@@ -324,9 +322,9 @@ public class PipeItemsInvSysConnector extends CoreRoutedPipe implements IDirectR
 	
 	public boolean isConnectedInv(TileEntity tile) {
 		for (int i = 0; i < 6; i++)	{
-			Position p = new Position(xCoord, yCoord, zCoord, ForgeDirection.values()[i]);
+			Position p = new Position(getX(), getY(), getZ(), ForgeDirection.values()[i]);
 			p.moveForwards(1);
-			TileEntity lTile = worldObj.getBlockTileEntity((int) p.x, (int) p.y, (int) p.z);
+			TileEntity lTile = getWorld().getBlockTileEntity((int) p.x, (int) p.y, (int) p.z);
 			if(lTile instanceof IInventory) {
 				if(lTile == tile) {
 					return true;
@@ -337,16 +335,16 @@ public class PipeItemsInvSysConnector extends CoreRoutedPipe implements IDirectR
 		return false;
 	}
 	
-	public void handleItemEnterInv(EntityData data, TileEntity tile) {
+	public void handleItemEnterInv(TravelingItem arrivingItem, TileEntity tile) {
 		if(isConnectedInv(tile)) {
-			if(data.item instanceof IRoutedItem) {
-				IRoutedItem routed = (IRoutedItem)data.item;
+			if(arrivingItem instanceof IRoutedItem) {
+				IRoutedItem routed = (IRoutedItem)arrivingItem;
 				if(hasRemoteConnection()) {
 					CoreRoutedPipe CRP = SimpleServiceLocator.connectionManager.getConnectedPipe(getRouter());
 					if(CRP instanceof IDirectRoutingConnection) {
 						IDirectRoutingConnection pipe = (IDirectRoutingConnection) CRP;
 						pipe.addItem(ItemIdentifier.get(routed.getItemStack()), routed.getItemStack().stackSize, routed.getDestination(), routed.getTransportMode());
-						MainProxy.sendSpawnParticlePacket(Particles.OrangeParticle, xCoord, yCoord, zCoord, this.worldObj, 4);
+						MainProxy.sendSpawnParticlePacket(Particles.OrangeParticle, getX(), getY(), getZ(), this.getWorld(), 4);
 					}
 				}
 			}
@@ -354,28 +352,15 @@ public class PipeItemsInvSysConnector extends CoreRoutedPipe implements IDirectR
 	}
 
 	@Override
-	public int getX() {
-		return this.xCoord;
+	public void startWatching() {
+//TODO 	MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_START_WATCHING, getX(), getY(), getZ(), 1).getPacket());
+		MainProxy.sendPacketToServer(PacketHandler.getPacket(HUDStartWatchingPacket.class).setInteger(1).setPosX(getX()).setPosY(getY()).setPosZ(getZ()));
 	}
 
 	@Override
-	public int getY() {
-		return this.yCoord;
-	}
-
-	@Override
-	public int getZ() {
-		return this.zCoord;
-	}
-
-	@Override
-	public void startWaitching() {
-		MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_START_WATCHING, xCoord, yCoord, zCoord, 1).getPacket());
-	}
-
-	@Override
-	public void stopWaitching() {
-		MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_STOP_WATCHING, xCoord, yCoord, zCoord, 1).getPacket());
+	public void stopWatching() {
+//TODO 	MainProxy.sendPacketToServer(new PacketPipeInteger(NetworkConstants.HUD_STOP_WATCHING, getX(), getY(), getZ(), 1).getPacket());
+		MainProxy.sendPacketToServer(PacketHandler.getPacket(HUDStopWatchingPacket.class).setInteger(1).setPosX(getX()).setPosY(getY()).setPosZ(getZ()));
 	}
 
 	@Override
@@ -387,7 +372,8 @@ public class PipeItemsInvSysConnector extends CoreRoutedPipe implements IDirectR
 		Set<ItemIdentifierStack> newList = getExpectedItems();
 		if(!newList.equals(oldList)) {
 			oldList=newList;
-			MainProxy.sendToPlayerList(new PacketPipeInvContent(NetworkConstants.ORDER_MANAGER_CONTENT, xCoord, yCoord, zCoord, newList).getPacket(), localModeWatchers);
+//TODO 		MainProxy.sendToPlayerList(new PacketPipeInvContent(NetworkConstants.ORDER_MANAGER_CONTENT, getX(), getY(), getZ(), newList).getPacket(), localModeWatchers);
+			MainProxy.sendToPlayerList(PacketHandler.getPacket(OrdererManagerContent.class).setIdentSet(newList).setPosX(getX()).setPosY(getY()).setPosZ(getZ()), localModeWatchers);
 		}
 	}
 
@@ -395,7 +381,8 @@ public class PipeItemsInvSysConnector extends CoreRoutedPipe implements IDirectR
 	public void playerStartWatching(EntityPlayer player, int mode) {
 		if(mode == 1) {
 			localModeWatchers.add(player);
-			MainProxy.sendPacketToPlayer(new PacketPipeInvContent(NetworkConstants.ORDER_MANAGER_CONTENT, xCoord, yCoord, zCoord, getExpectedItems()).getPacket(), (Player)player);
+//TODO 		MainProxy.sendPacketToPlayer(new PacketPipeInvContent(NetworkConstants.ORDER_MANAGER_CONTENT, getX(), getY(), getZ(), getExpectedItems()).getPacket(), (Player)player);
+			MainProxy.sendPacketToPlayer(PacketHandler.getPacket(OrdererManagerContent.class).setIdentSet(getExpectedItems()).setPosX(getX()).setPosY(getY()).setPosZ(getZ()), (Player)player);
 		} else {
 			super.playerStartWatching(player, mode);
 		}

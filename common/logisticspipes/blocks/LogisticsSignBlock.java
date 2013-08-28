@@ -2,14 +2,10 @@ package logisticspipes.blocks;
 
 import java.util.Random;
 
-import logisticspipes.pipes.PipeItemsCraftingLogistics;
 import net.minecraft.block.BlockContainer;
 import net.minecraft.block.material.Material;
-import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.Icon;
-import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
 
 public class LogisticsSignBlock extends BlockContainer {
@@ -20,17 +16,16 @@ public class LogisticsSignBlock extends BlockContainer {
 		super(par1, Material.iron);
 		this.setBlockBounds(0.0F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F);
 	}
-	
 
 	@Override
 	public Icon getIcon(int par1, int par2) {
 		return planks.getBlockTextureFromSide(par1);
 	}
 
-
+	/*
 	@Override
 	public boolean renderAsNormalBlock() {
-		return false;
+		return true;
 	}
 
 	@Override
@@ -40,7 +35,7 @@ public class LogisticsSignBlock extends BlockContainer {
 
 	@Override
 	public boolean isOpaqueCube() {
-		return false;
+		return true;
 	}
 
 	@Override
@@ -66,8 +61,8 @@ public class LogisticsSignBlock extends BlockContainer {
 			this.setBlockBounds(0.0F, 0.0F, 0.0F, 1.0F, 1.0F, 1.0F);
 			PipeItemsCraftingLogistics pipe = ((LogisticsSignTileEntity)tile).getAttachedSignOwnerPipe();
 			if (pipe != null) {
-				int disX = pipe.xCoord - tile.xCoord;
-				int disZ = pipe.zCoord - tile.zCoord;
+				int disX = pipe.getX() - tile.xCoord;
+				int disZ = pipe.getZ() - tile.zCoord;
 				if (disZ > 0) {
 					this.setBlockBounds(var8, var6, 1.0F - var10, var9, var7, 1.0F);
 				} else if (disZ < 0) {
@@ -80,6 +75,7 @@ public class LogisticsSignBlock extends BlockContainer {
 			}
 		}
 	}
+*/
 
 	@Override
 	public TileEntity createNewTileEntity(World var1) {

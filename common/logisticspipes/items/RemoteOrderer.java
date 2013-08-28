@@ -4,9 +4,11 @@ import java.util.List;
 
 import logisticspipes.LogisticsPipes;
 import logisticspipes.network.GuiIDs;
-import logisticspipes.network.NetworkConstants;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.pipe.RequestPipeDimension;
 import logisticspipes.pipes.PipeItemsRemoteOrdererLogistics;
 import logisticspipes.proxy.MainProxy;
+import net.minecraft.client.renderer.texture.IconRegister;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
@@ -22,7 +24,6 @@ import org.lwjgl.input.Keyboard;
 import buildcraft.transport.Pipe;
 import buildcraft.transport.TileGenericPipe;
 import cpw.mods.fml.common.network.Player;
-import net.minecraft.client.renderer.texture.IconRegister;
 
 public class RemoteOrderer extends Item {
 	final static Icon[] _icons = new Icon[17];
@@ -81,8 +82,17 @@ public class RemoteOrderer extends Item {
 		PipeItemsRemoteOrdererLogistics pipe = getPipe(par1ItemStack);
 		if(pipe != null) {
 			if(MainProxy.isServer(par3EntityPlayer.worldObj)) {
-				MainProxy.sendPacketToPlayer(new PacketInteger(NetworkConstants.REQUEST_GUI_DIMENSION, MainProxy.getDimensionForWorld(pipe.worldObj)).getPacket(), (Player)par3EntityPlayer);
-				par3EntityPlayer.openGui(LogisticsPipes.instance, GuiIDs.GUI_Normal_Orderer_ID, pipe.worldObj, pipe.xCoord, pipe.yCoord, pipe.zCoord);
+				int energyUse=0;
+				if(pipe.getWorld() != par3EntityPlayer.worldObj)
+					energyUse += 500;
+				energyUse += Math.abs(pipe.getX()-par3EntityPlayer.posX) + Math.abs(pipe.getY()-par3EntityPlayer.posY) + Math.abs(pipe.getZ()-par3EntityPlayer.posZ);
+				energyUse *= 5; // x5 converts from lp to mj energy cost.
+				if(pipe.useEnergy(energyUse)) { 
+//TODO 			MainProxy.sendPacketToPlayer(new PacketInteger(NetworkConstants.REQUEST_GUI_DIMENSION, MainProxy.getDimensionForWorld(pipe.getWorld())).getPacket(), (Player)par3EntityPlayer);
+				MainProxy.sendPacketToPlayer(PacketHandler.getPacket(RequestPipeDimension.class).setInteger(MainProxy.getDimensionForWorld(pipe.getWorld())), (Player)par3EntityPlayer);
+				par3EntityPlayer.openGui(LogisticsPipes.instance, GuiIDs.GUI_Normal_Orderer_ID, pipe.getWorld(), pipe.getX(), pipe.getY(), pipe.getZ());
+			
+				}
 			}
 		}
 		return par1ItemStack;
@@ -90,12 +100,12 @@ public class RemoteOrderer extends Item {
 	
 	public static void connectToPipe(ItemStack stack, PipeItemsRemoteOrdererLogistics pipe) {
 		stack.stackTagCompound = new NBTTagCompound();
-		stack.stackTagCompound.setInteger("connectedPipe-x", pipe.xCoord);
-		stack.stackTagCompound.setInteger("connectedPipe-y", pipe.yCoord);
-		stack.stackTagCompound.setInteger("connectedPipe-z", pipe.zCoord);
+		stack.stackTagCompound.setInteger("connectedPipe-x", pipe.getX());
+		stack.stackTagCompound.setInteger("connectedPipe-y", pipe.getY());
+		stack.stackTagCompound.setInteger("connectedPipe-z", pipe.getZ());
 		int dimension = 0;
 		for(Integer dim:DimensionManager.getIDs()) {
-			if(pipe.worldObj.equals(DimensionManager.getWorld(dim.intValue()))) {
+			if(pipe.getWorld().equals(DimensionManager.getWorld(dim.intValue()))) {
 				dimension = dim.intValue();
 				break;
 			}

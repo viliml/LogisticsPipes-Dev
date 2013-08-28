@@ -1,40 +1,44 @@
 package logisticspipes.blocks;
 
-import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
+import logisticspipes.LogisticsPipes;
 import logisticspipes.interfaces.ICraftingResultHandler;
 import logisticspipes.interfaces.IGuiOpenControler;
 import logisticspipes.interfaces.IRotationProvider;
 import logisticspipes.interfaces.ISlotCheck;
-import logisticspipes.network.NetworkConstants;
-import logisticspipes.network.packets.PacketCoordinates;
-import logisticspipes.network.packets.PacketInventoryChange;
-import logisticspipes.network.packets.PacketPipeInteger;
+import logisticspipes.network.PacketHandler;
+import logisticspipes.network.packets.block.RequestRotationPacket;
+import logisticspipes.network.packets.block.SolderingStationHeat;
+import logisticspipes.network.packets.block.SolderingStationInventory;
+import logisticspipes.network.packets.block.SolderingStationProgress;
 import logisticspipes.proxy.MainProxy;
 import logisticspipes.recipes.SolderingStationRecipes;
 import logisticspipes.recipes.SolderingStationRecipes.SolderingStationRecipe;
 import logisticspipes.utils.ItemIdentifier;
 import logisticspipes.utils.ItemIdentifierStack;
+import logisticspipes.utils.PlayerCollectionList;
 import logisticspipes.utils.SimpleInventory;
 import logisticspipes.utils.gui.DummyContainer;
+import net.minecraft.crash.CrashReportCategory;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.Container;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.world.World;
 import net.minecraftforge.common.ForgeDirection;
 import buildcraft.api.inventory.ISpecialInventory;
-import buildcraft.api.power.IPowerProvider;
+import buildcraft.api.power.PowerHandler;
 import buildcraft.api.power.IPowerReceptor;
-import buildcraft.api.power.PowerFramework;
-import cpw.mods.fml.common.network.Player;
+import buildcraft.api.power.PowerHandler.PowerReceiver;
+import buildcraft.api.power.PowerHandler.Type;
 
 public class LogisticsSolderingTileEntity extends TileEntity implements IPowerReceptor, ISpecialInventory, IGuiOpenControler, IRotationProvider {
 	
-	private IPowerProvider provider;
+	private PowerHandler provider;
 	private SimpleInventory inv = new SimpleInventory(12, "Soldering Inventory", 64);
 	public int heat = 0;
 	public int progress = 0;
@@ -42,11 +46,11 @@ public class LogisticsSolderingTileEntity extends TileEntity implements IPowerRe
 	public int rotation = 0;
 	private boolean init = false;
 	
-	private List<EntityPlayer> listener = new ArrayList<EntityPlayer>();
+	private PlayerCollectionList listener = new PlayerCollectionList();
 
 	public LogisticsSolderingTileEntity() {
-		provider = PowerFramework.currentFramework.createPowerProvider();
-		provider.configure(10, 10, 100, 10, 100);
+		provider = new PowerHandler(this, Type.MACHINE);
+		provider.configure(10, 100, 1000, 100); // never triggers doWork, as this is just an energy store, and tick does the actual work.
 	}
 
 	public Container createContainer(EntityPlayer player) {
@@ -223,29 +227,24 @@ public class LogisticsSolderingTileEntity extends TileEntity implements IPowerRe
 	}
 	
 	private void updateHeat() {
-		MainProxy.sendPacketToAllAround(xCoord, yCoord, zCoord, 64, MainProxy.getDimensionForWorld(worldObj), new PacketPipeInteger(NetworkConstants.SOLDERING_UPDATE_HEAT, xCoord, yCoord, zCoord, this.heat).getPacket());
-		for(EntityPlayer player:listener) {
-			MainProxy.sendPacketToPlayer(new PacketPipeInteger(NetworkConstants.SOLDERING_UPDATE_HEAT, xCoord, yCoord, zCoord, this.heat).getPacket(), (Player)player);
+		MainProxy.sendPacketToAllWatchingChunk(xCoord, zCoord, MainProxy.getDimensionForWorld(getWorld()), PacketHandler.getPacket(SolderingStationHeat.class).setInteger(this.heat).setPosX(xCoord).setPosY(yCoord).setPosZ(zCoord));
+		MainProxy.sendToPlayerList(PacketHandler.getPacket(SolderingStationHeat.class).setInteger(this.heat).setPosX(xCoord).setPosY(yCoord).setPosZ(zCoord), listener);
 		}
-	}
 
 	private void updateProgress() {
-		for(EntityPlayer player:listener) {
-			MainProxy.sendPacketToPlayer(new PacketPipeInteger(NetworkConstants.SOLDERING_UPDATE_PROGRESS, xCoord, yCoord, zCoord, this.progress).getPacket(), (Player)player);
+		MainProxy.sendToPlayerList(PacketHandler.getPacket(SolderingStationProgress.class).setInteger(this.progress).setPosX(xCoord).setPosY(yCoord).setPosZ(zCoord), listener);
 		}
-	}
 	
 	private void updateInventory() {
-		for(EntityPlayer player:listener) {
-			MainProxy.sendPacketToPlayer(new PacketInventoryChange(NetworkConstants.SOLDERING_UPDATE_INVENTORY, xCoord, yCoord, zCoord, this).getPacket(), (Player)player);
+		MainProxy.sendToPlayerList(PacketHandler.getPacket(SolderingStationInventory.class).setInventory(this).setPosX(xCoord).setPosY(yCoord).setPosZ(zCoord), listener);
 		}
-	}
 	
 	@Override
 	public void updateEntity() {
-		if(MainProxy.isClient(worldObj)) {
+		if(MainProxy.isClient(getWorld())) {
 			if(!init) {
-				MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.ROTATION_REQUEST, xCoord, yCoord, zCoord).getPacket());
+//TODO 			MainProxy.sendPacketToServer(new PacketCoordinates(NetworkConstants.ROTATION_REQUEST, xCoord, yCoord, zCoord).getPacket());
+				MainProxy.sendPacketToServer(PacketHandler.getPacket(RequestRotationPacket.class).setPosX(xCoord).setPosY(yCoord).setPosZ(zCoord));
 				init = true;
 			}
 			return;
@@ -259,7 +258,7 @@ public class LogisticsSolderingTileEntity extends TileEntity implements IPowerRe
 				}
 				updateHeat();
 			} else {
-				if(worldObj.getWorldTime() % 5 == 0) {
+				if(getWorld().getWorldTime() % 5 == 0) {
 					heat--;
 					if(heat < 0) {
 						heat = 0;
@@ -288,30 +287,30 @@ public class LogisticsSolderingTileEntity extends TileEntity implements IPowerRe
 	}
 
 	private boolean tryCraft() {
-		ItemStack content = inv.getStackInSlot(10);
+		ItemIdentifierStack content = inv.getIDStackInSlot(10);
 		ICraftingResultHandler handler = getHandlerForRecipe();
 		ItemStack toAdd = getTagetForRecipe(false);
 		if(handler != null) {
 			handler.handleCrafting(toAdd);
 		}
 		if(content != null) {
-			if(!content.isItemEqual(toAdd) || !ItemStack.areItemStackTagsEqual(content, toAdd)) {
+			if(!content.getItem().equals(toAdd)) {
 				return false;
 			}
-			if(content.stackSize + toAdd.stackSize > content.getMaxStackSize()) {
+			if(content.stackSize + toAdd.stackSize > content.getItem().getMaxStackSize()) {
 				return false;
 			}
 			toAdd.stackSize += content.stackSize;
 		}
 
 		//dummy
-		content = getTagetForRecipe(true);
+		getTagetForRecipe(true);
 
 		inv.setInventorySlotContents(10, toAdd);
 
 		inv.getStackInSlot(9).stackSize -= 1;
 		if(inv.getStackInSlot(9).stackSize <= 0) {
-			inv.setInventorySlotContents(9, null);
+			inv.clearInventorySlotContents(9);
 		}
 
 		inv.onInventoryChanged();
@@ -321,30 +320,22 @@ public class LogisticsSolderingTileEntity extends TileEntity implements IPowerRe
 		return true;
 	}
 
-	@Override
-	public void setPowerProvider(IPowerProvider provider) {
-		this.provider = provider;
-	}
 
 	@Override
-	public IPowerProvider getPowerProvider() {
-		return provider;
-	}
-
-	@Override
-	public void doWork() {
+	public void doWork(PowerHandler workProvider) {
 		
 	}
 
 	@Override
-	public int powerRequest(ForgeDirection from) {
-		if (hasWork()) {
-			return provider.getMaxEnergyReceived();
-		} else {
-			return 0;
-		}
+	public PowerReceiver getPowerReceiver(ForgeDirection side) {
+		return provider.getPowerReceiver();
 	}
 
+	@Override
+	public World getWorld() {
+		return this.getWorldObj();
+	}
+	
 	@Override
 	public int getSizeInventory() {
 		return inv.getSizeInventory();
@@ -413,7 +404,7 @@ public class LogisticsSolderingTileEntity extends TileEntity implements IPowerRe
 				super.onInventoryChanged();
 			}
 			if (iron.stackSize == 0) {
-				inv.setInventorySlotContents(9, null);
+				inv.clearInventorySlotContents(9);
 			}
 			return toAdd;
 		}
@@ -455,7 +446,7 @@ public class LogisticsSolderingTileEntity extends TileEntity implements IPowerRe
 			}
 			if(stack.itemID == itemstack.itemID && stack.getItemDamage() == itemstack.getItemDamage()) {
 				if(itemsperslot == 0 && itemsextra == 0) {
-					inv.setInventorySlotContents(i, null);
+					inv.clearInventorySlotContents(i);
 				} else {
 					ItemStack slot = inv.getStackInSlot(i);
 					if(slot == null) {
@@ -480,7 +471,7 @@ public class LogisticsSolderingTileEntity extends TileEntity implements IPowerRe
 	public ItemStack[] extractItem(boolean doRemove, ForgeDirection from, int maxItemCount) {
 		ItemStack[] tmp = new ItemStack[] { inv.getStackInSlot(10) };
 		if (doRemove) {
-			inv.setInventorySlotContents(10, null);
+			inv.clearInventorySlotContents(10);
 			inv.onInventoryChanged();
 			super.onInventoryChanged();
 		}
@@ -498,7 +489,7 @@ public class LogisticsSolderingTileEntity extends TileEntity implements IPowerRe
 	}
 	
 	public void onBlockBreak() {
-		inv.dropContents(worldObj, xCoord, yCoord, zCoord);
+		inv.dropContents(getWorld(), xCoord, yCoord, zCoord);
 	}
 	
 	@Override
@@ -527,8 +518,16 @@ public class LogisticsSolderingTileEntity extends TileEntity implements IPowerRe
 	}
 
 	@Override
-	public boolean isStackValidForSlot(int i, ItemStack itemstack) {
+	public boolean isItemValidForSlot(int i, ItemStack itemstack) {
 		// TODO Auto-generated method stub
 		return true;
 	}
+
+	@Override
+	public void func_85027_a(CrashReportCategory par1CrashReportCategory) {
+		super.func_85027_a(par1CrashReportCategory);
+		par1CrashReportCategory.addCrashSection("LP-Version", LogisticsPipes.VERSION);
+	}
+
+
 }

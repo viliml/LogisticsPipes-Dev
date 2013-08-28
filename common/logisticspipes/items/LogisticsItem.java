@@ -8,13 +8,13 @@
 
 package logisticspipes.items;
 
-import cpw.mods.fml.relauncher.Side;
-import cpw.mods.fml.relauncher.SideOnly;
 import logisticspipes.LogisticsPipes;
 import net.minecraft.client.renderer.texture.IconRegister;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.item.Item;
 import net.minecraft.util.Icon;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 
 public class LogisticsItem extends Item {
 
@@ -22,22 +22,20 @@ public class LogisticsItem extends Item {
 		super(i);
 	}
 	
-	public LogisticsItem(int i,
-			Icon icon) {
-				super(i);
-				this.itemIcon =icon;
+	public LogisticsItem(int i,Icon icon) {
+		super(i);
+		this.itemIcon = icon;
 	}
 
 	@Override
     @SideOnly(Side.CLIENT)
-    public void registerIcons(IconRegister par1IconRegister)
-    {
+    public void registerIcons(IconRegister par1IconRegister) {
 		if(this.itemIcon == null)
 			this.itemIcon = par1IconRegister.registerIcon("logisticspipes:"+getUnlocalizedName().replace("item.",""));
 	}
 
 	@Override
 	public CreativeTabs[] getCreativeTabs() {
-        return new CreativeTabs[]{ getCreativeTab() , LogisticsPipes.LPCreativeTab };
+        return new CreativeTabs[]{ LogisticsPipes.LPCreativeTab };
 	}
 }

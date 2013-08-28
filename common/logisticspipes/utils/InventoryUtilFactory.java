@@ -11,8 +11,8 @@ package logisticspipes.utils;
 import java.util.ArrayList;
 import java.util.List;
 
+import logisticspipes.LogisticsPipes;
 import logisticspipes.interfaces.IInventoryUtil;
-import logisticspipes.logisticspipes.SidedInventoryAdapter;
 import logisticspipes.proxy.specialinventoryhandler.SpecialInventoryHandler;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.tileentity.TileEntity;
@@ -23,15 +23,18 @@ public class InventoryUtilFactory {
 	public void registerHandler(SpecialInventoryHandler invHandler) {
 		if(invHandler.init()) {
 			handler.add(invHandler);
+			LogisticsPipes.log.info("Loaded SpecialInventoryHandler: " + invHandler.getClass().getCanonicalName());
+		} else {
+			LogisticsPipes.log.warning("Could not load SpecialInventoryHandler: " + invHandler.getClass().getCanonicalName());
 		}
 	}
 
 	private TileEntity getTileEntityFromInventory(IInventory inv) {
 		if(inv instanceof TileEntity) {
 			return (TileEntity) inv;
-		} else if(inv instanceof SidedInventoryAdapter) {
-			if(((SidedInventoryAdapter) inv)._sidedInventory instanceof TileEntity) {
-				return (TileEntity) ((SidedInventoryAdapter) inv)._sidedInventory;
+		} else if(inv instanceof SidedInventoryMinecraftAdapter) {
+			if(((SidedInventoryMinecraftAdapter) inv)._sidedInventory instanceof TileEntity) {
+				return (TileEntity) ((SidedInventoryMinecraftAdapter) inv)._sidedInventory;
 			}
 		}
 		return null;
